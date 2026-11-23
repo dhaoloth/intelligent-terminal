@@ -177,7 +177,7 @@ namespace
         return result;
     }
 
-    safe_void_coroutine _runAgentProbe(Windows::UI::Core::CoreDispatcher dispatcher,
+    safe_void_coroutine _runAgentProbe(winrt::Windows::UI::Core::CoreDispatcher dispatcher,
                                        std::wstring wta,
                                        ConnectionTarget target,
                                        std::shared_ptr<std::atomic<bool>> cancelled,

@@ -17697,7 +17697,8 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tabImpl{ _GetFocusedTabImpl() })
             {
-                const auto dockWidth = widthOrHeight && SshHostsDock().Visibility() == Visibility::Visible ? SshHostsDock().ActualWidth() : 0.0;
+                const auto dock = const_cast<TerminalPage*>(this)->SshHostsDock();
+                const auto dockWidth = widthOrHeight && dock.Visibility() == Visibility::Visible ? dock.ActualWidth() : 0.0;
                 const auto terminalDimension = static_cast<float>(std::max(0.0, static_cast<double>(dimension) - dockWidth));
                 return tabImpl->CalcSnappedDimension(widthOrHeight, terminalDimension) + static_cast<float>(dockWidth);
             }
