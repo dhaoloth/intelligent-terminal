@@ -103,7 +103,7 @@ namespace winrt::TerminalApp::implementation
     // - existingConnection: An optional connection that is already established to a PTY
     //   for this tab to host instead of creating one.
     //   If not defined, the tab will create the connection.
-    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground)
+    HRESULT TerminalPage::_OpenNewTab(const INewContentArgs& newContentArgs, bool openInBackground, const WorkspaceAgentLaunch* workspaceAgent)
     try
     {
         if (const auto& newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
@@ -129,7 +129,7 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        return _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground) ? S_OK : S_FALSE;
+        return _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground, workspaceAgent) ? S_OK : S_FALSE;
     }
     CATCH_RETURN();
 
@@ -496,7 +496,7 @@ namespace winrt::TerminalApp::implementation
     // Arguments:
     // - pane: The pane to use as the root.
     // - insertPosition: Optional parameter to indicate the position of tab.
-    TerminalApp::Tab TerminalPage::_CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition, bool openInBackground)
+    TerminalApp::Tab TerminalPage::_CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition, bool openInBackground, const WorkspaceAgentLaunch* workspaceAgent)
     {
         if (pane)
         {
@@ -517,8 +517,26 @@ namespace winrt::TerminalApp::implementation
                 _receivingContentTransfer->tabs.push_back(newTabImpl);
                 _CheckpointContentTransfer(ContentTransferStage::BeforeFirstPaneInsertion, _receivingContentTransfer->firstContentId);
             }
+            if (workspaceAgent)
+            {
+                newTabImpl->SuppressAgentPrewarm();
+            }
             _InitializeTab(newTabImpl, insertPosition, openInBackground);
             closeOnFailure.release();
+
+            if (workspaceAgent)
+            {
+                const auto control = pane->GetTerminalControl();
+                if (const auto connection = control ? control.Connection() : nullptr)
+                {
+                    try
+                    {
+                        winrt::get_self<ContentManager>(_manager)->RegisterWorkspaceAgentSession(
+                            control.ContentId(), connection.SessionId(), _WindowProperties.WindowId(), *this, *workspaceAgent);
+                    }
+                    CATCH_LOG()
+                }
+            }
             return *newTabImpl;
         }
         return nullptr;

@@ -566,6 +566,7 @@ namespace winrt::TerminalApp::implementation
             const auto& contentId{ content.Id() };
             std::optional<NativeAgentObservationIdentity> retired;
             std::optional<winrt::guid> unreadPane;
+            bool workspaceAgentRemoved{ false };
             {
                 std::lock_guard lock{ _mutex };
                 if (const auto found = _content.find(contentId); found != _content.end())
@@ -580,6 +581,7 @@ namespace winrt::TerminalApp::implementation
                     }
                 }
                 _content.erase(contentId);
+                workspaceAgentRemoved = _workspaceAgentSessions.erase(contentId) != 0;
             }
             if (retired)
             {
@@ -614,10 +616,14 @@ namespace winrt::TerminalApp::implementation
                 writer["indentation"] = "";
                 DetachedSessionEvent.raise(*this, winrt::to_hstring(Json::writeString(writer, event)));
             }
-            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId, unreadPane]() {
+            LOG_HR_IF(E_ABORT, !_dispatcher.TryEnqueue([weak = get_weak(), contentId, unreadPane, workspaceAgentRemoved]() {
                 if (const auto self = weak.get())
                 {
                     self->_agentBindings.erase(contentId);
+                    if (workspaceAgentRemoved)
+                    {
+                        self->_NotifyWorkspaceAgentSessionsChanged();
+                    }
                     if (unreadPane)
                     {
                         self->AgentCompletionChanged.raise(*unreadPane);
@@ -966,6 +972,132 @@ namespace winrt::TerminalApp::implementation
         PaneWindowChanged.raise(paneId, windowId);
     }
 
+    bool ContentManager::RegisterWorkspaceAgentSession(const uint64_t contentId,
+                                                       const winrt::guid& paneSessionId,
+                                                       const uint64_t windowId,
+                                                       const winrt::TerminalApp::TerminalPage& owner,
+                                                       WorkspaceAgentLaunch launch)
+    {
+        _CheckThread();
+        if (!owner || paneSessionId == winrt::guid{})
+        {
+            return false;
+        }
+
+        // Validate the identity against the actual terminal connection. The
+        // caller cannot register a stale pane or a different pane's metadata.
+        const auto core = TryLookupCore(contentId);
+        if (!core || !core.Core().Connection() || core.Core().Connection().SessionId() != paneSessionId)
+        {
+            return false;
+        }
+
+        WorkspaceAgentSession session{ std::move(launch), contentId, paneSessionId, windowId, winrt::make_weak(owner) };
+        {
+            std::lock_guard lock{ _mutex };
+            if (!_content.contains(contentId))
+            {
+                return false;
+            }
+            _workspaceAgentSessions.insert_or_assign(contentId, std::move(session));
+        }
+        _NotifyWorkspaceAgentSessionsChanged();
+        return true;
+    }
+
+    bool ContentManager::UpdateWorkspaceAgentOwner(const winrt::guid& paneSessionId,
+                                                   const uint64_t windowId,
+                                                   const winrt::TerminalApp::TerminalPage& owner)
+    {
+        _CheckThread();
+        if (!owner || paneSessionId == winrt::guid{})
+        {
+            return false;
+        }
+        {
+            std::lock_guard lock{ _mutex };
+            const auto session = std::find_if(_workspaceAgentSessions.begin(), _workspaceAgentSessions.end(), [&](const auto& entry) {
+                return entry.second.paneSessionId == paneSessionId;
+            });
+            if (session == _workspaceAgentSessions.end())
+            {
+                return false;
+            }
+            session->second.windowId = windowId;
+            session->second.owner = winrt::make_weak(owner);
+        }
+        _NotifyWorkspaceAgentSessionsChanged();
+        return true;
+    }
+
+    void ContentManager::NotifyWorkspaceAgentConnectionStateChanged(const uint64_t contentId)
+    {
+        bool registered{ false };
+        {
+            std::lock_guard lock{ _mutex };
+            registered = _workspaceAgentSessions.contains(contentId);
+        }
+        if (registered)
+        {
+            _NotifyWorkspaceAgentSessionsChanged();
+        }
+    }
+
+    void ContentManager::ReplaceWorkspaceAgentConnection(const uint64_t contentId, const std::optional<winrt::guid> paneSessionId)
+    {
+        _CheckThread();
+        {
+            std::lock_guard lock{ _mutex };
+            const auto session = _workspaceAgentSessions.find(contentId);
+            if (session == _workspaceAgentSessions.end())
+            {
+                return;
+            }
+            if (paneSessionId && *paneSessionId != winrt::guid{})
+            {
+                session->second.paneSessionId = *paneSessionId;
+            }
+            else
+            {
+                _workspaceAgentSessions.erase(session);
+            }
+        }
+        _NotifyWorkspaceAgentSessionsChanged();
+    }
+
+    std::vector<ContentManager::WorkspaceAgentSession> ContentManager::WorkspaceAgentSessions()
+    {
+        _CheckThread();
+        std::vector<std::pair<WorkspaceAgentSession, ControlInteractivity>> snapshot;
+        {
+            std::lock_guard lock{ _mutex };
+            snapshot.reserve(_workspaceAgentSessions.size());
+            for (const auto& [contentId, session] : _workspaceAgentSessions)
+            {
+                if (const auto content = _content.find(contentId); content != _content.end())
+                {
+                    snapshot.emplace_back(session, content->second.core);
+                }
+            }
+        }
+
+        std::vector<WorkspaceAgentSession> result;
+        result.reserve(snapshot.size());
+        for (auto& [session, core] : snapshot)
+        {
+            const auto terminal = core.Core();
+            const auto connection = terminal.Connection();
+            if (!connection || connection.SessionId() != session.paneSessionId)
+            {
+                continue;
+            }
+            session.state = terminal.ConnectionState();
+            session.kept = IsKeptContent(session.contentId);
+            result.emplace_back(std::move(session));
+        }
+        return result;
+    }
+
     void ContentManager::DiscardKeptGroup(const winrt::guid& groupId)
     {
         _CheckThread();
@@ -1022,6 +1154,15 @@ namespace winrt::TerminalApp::implementation
         try
         {
             KeepRunningTabsChanged.raise(*this, nullptr);
+        }
+        CATCH_LOG()
+    }
+
+    void ContentManager::_NotifyWorkspaceAgentSessionsChanged() noexcept
+    {
+        try
+        {
+            WorkspaceAgentSessionsChanged.raise(*this, nullptr);
         }
         CATCH_LOG()
     }

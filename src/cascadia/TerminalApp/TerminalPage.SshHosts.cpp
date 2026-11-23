@@ -4,6 +4,7 @@
 #include "pch.h"
 #include "TerminalPage.h"
 #include "SshHostStore.h"
+#include "ContentManager.h"
 
 #include <LibraryResources.h>
 #include <array>
@@ -41,6 +42,14 @@ namespace
         NativeAgent{ L"hermes", L"Hermes Agent" },
         NativeAgent{ L"qwen", L"Qwen Code" },
     };
+
+    winrt::TerminalApp::implementation::WorkspaceAgentLaunch _workspaceAgentLaunch(
+        const std::wstring_view provider, const std::wstring_view targetId, const std::wstring_view targetName, const bool remote)
+    {
+        const auto agent = std::ranges::find(NativeAgents, provider, &NativeAgent::executable);
+        return { hstring{ provider }, hstring{ agent != NativeAgents.end() ? agent->label : provider },
+                 hstring{ targetId }, hstring{ targetName }, remote };
+    }
 
     struct ConnectionTarget
     {
@@ -460,8 +469,144 @@ namespace winrt::TerminalApp::implementation
     {
         const auto visible = _freChromeVisible && !_IsFreRequired() && !_isInFocusMode && (!_isFullscreen || _showTabsFullscreen);
         SshHostsDock().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
-        const auto width = visible ? std::min(SshHostsDockWidth, WorkspaceRoot().ActualWidth() / 3.0) : 0.0;
-        WorkspaceRoot().ColumnDefinitions().GetAt(0).Width(GridLengthHelper::FromValueAndType(width, GridUnitType::Pixel));
+        const auto sessionsVisible = visible && _workspaceAgentSessionsOpen;
+        WorkspaceAgentSessionsDock().Visibility(sessionsVisible ? Visibility::Visible : Visibility::Collapsed);
+
+        const auto availableWidth = WorkspaceRoot().ActualWidth();
+        const auto sideLimit = availableWidth * (sessionsVisible ? 0.23 : 1.0 / 3.0);
+        const auto columns = WorkspaceRoot().ColumnDefinitions();
+        columns.GetAt(0).Width(GridLengthHelper::FromValueAndType(
+            visible ? std::min(SshHostsDockWidth, sideLimit) : 0.0, GridUnitType::Pixel));
+        columns.GetAt(2).Width(GridLengthHelper::FromValueAndType(
+            sessionsVisible ? std::min(300.0, sideLimit) : 0.0, GridUnitType::Pixel));
+    }
+
+    void TerminalPage::_ToggleWorkspaceAgentSessions()
+    {
+        _workspaceAgentSessionsOpen = !_workspaceAgentSessionsOpen;
+        _UpdateSshHostsDockLayout();
+        _UpdateWorkspaceAgentSessions();
+    }
+
+    void TerminalPage::_UpdateWorkspaceAgentSessions()
+    {
+        if (!_workspaceAgentSessionsOpen)
+        {
+            return;
+        }
+
+        const auto panel = WorkspaceAgentSessionsRows().Children();
+        std::optional<uint64_t> focusedContent;
+        FocusState priorFocus{ FocusState::Unfocused };
+        for (const auto& child : panel)
+        {
+            if (const auto button = child.try_as<Button>(); button && button.FocusState() != FocusState::Unfocused)
+            {
+                focusedContent = winrt::unbox_value<uint64_t>(button.Tag());
+                priorFocus = button.FocusState();
+                break;
+            }
+        }
+        panel.Clear();
+
+        TextBlock title;
+        title.Text(RS_(L"WorkspaceAgentSessionsTitle"));
+        title.FontSize(16);
+        title.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+        panel.Append(title);
+
+        auto sessions = winrt::get_self<ContentManager>(_manager)->WorkspaceAgentSessions();
+        if (sessions.empty())
+        {
+            TextBlock empty;
+            empty.Text(RS_(L"WorkspaceAgentSessionsEmpty"));
+            empty.TextWrapping(TextWrapping::Wrap);
+            panel.Append(empty);
+            return;
+        }
+
+        std::ranges::sort(sessions, {}, &ContentManager::WorkspaceAgentSession::contentId);
+        for (const auto& session : sessions)
+        {
+            using Microsoft::Terminal::TerminalConnection::ConnectionState;
+
+            StackPanel details;
+            details.Spacing(3);
+            TextBlock name;
+            name.Text(RS_fmt(L"WorkspaceAgentSessionName", session.launch.providerDisplayName, session.launch.targetDisplayName));
+            name.TextWrapping(TextWrapping::Wrap);
+            name.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
+            details.Children().Append(name);
+
+            TextBlock placement;
+            placement.Text(session.kept ? RS_(L"WorkspaceAgentSessionBackground") :
+                                          hstring{ RS_fmt(L"WorkspaceAgentSessionWindow", session.windowId) });
+            placement.TextWrapping(TextWrapping::Wrap);
+            details.Children().Append(placement);
+
+            TextBlock state;
+            if (session.state == ConnectionState::Connected)
+            {
+                state.Text(RS_(L"WorkspaceAgentSessionAttached"));
+            }
+            else if (session.state == ConnectionState::Closed || session.state == ConnectionState::Failed)
+            {
+                state.Text(session.launch.remote ? RS_(L"WorkspaceAgentSessionRemoteUnknown") :
+                                                   RS_(L"WorkspaceAgentSessionDisconnected"));
+            }
+            else
+            {
+                state.Text(RS_(L"WorkspaceAgentSessionConnecting"));
+            }
+            state.TextWrapping(TextWrapping::Wrap);
+            details.Children().Append(state);
+
+            Button open;
+            open.Content(details);
+            open.HorizontalAlignment(HorizontalAlignment::Stretch);
+            open.HorizontalContentAlignment(HorizontalAlignment::Stretch);
+            open.Tag(box_value(session.contentId));
+            Automation::AutomationProperties::SetName(open, name.Text());
+            open.Click([weak = get_weak(), id = session.contentId, pane = session.paneSessionId](auto&&, auto&&) {
+                if (const auto page = weak.get())
+                {
+                    page->_FocusWorkspaceAgentSession(id, pane);
+                }
+            });
+            panel.Append(open);
+            if (focusedContent == session.contentId)
+            {
+                open.Focus(priorFocus);
+            }
+        }
+
+        TextBlock unavailable;
+        unavailable.Text(RS_(L"WorkspaceAgentSessionsMetricsUnavailable"));
+        unavailable.TextWrapping(TextWrapping::Wrap);
+        panel.Append(unavailable);
+    }
+
+    safe_void_coroutine TerminalPage::_FocusWorkspaceAgentSession(const uint64_t contentId, const winrt::guid paneId)
+    {
+        const auto lifetime = get_strong();
+        const auto sessions = winrt::get_self<ContentManager>(_manager)->WorkspaceAgentSessions();
+        const auto session = std::ranges::find(sessions, contentId, &ContentManager::WorkspaceAgentSession::contentId);
+        if (session == sessions.end() || session->paneSessionId != paneId)
+        {
+            _UpdateWorkspaceAgentSessions();
+            co_return;
+        }
+
+        try
+        {
+            const auto owner = session->kept ? as<winrt::TerminalApp::TerminalPage>() : session->owner.get();
+            if (owner && (co_await winrt::get_self<TerminalPage>(owner)->FocusProtocolPane(paneId)))
+            {
+                co_return;
+            }
+        }
+        CATCH_LOG();
+        _UpdateWorkspaceAgentSessions();
     }
 
     void TerminalPage::_InitializeSshHosts()
@@ -937,12 +1082,21 @@ namespace winrt::TerminalApp::implementation
             }
         });
         actions.Children().Append(importAliases);
+        HyperlinkButton sessions;
+        sessions.Content(box_value(RS_(L"WorkspaceAgentSessionsTitle")));
+        sessions.Click([weak = get_weak()](auto&&, auto&&) {
+            if (const auto page = weak.get())
+            {
+                page->_ToggleWorkspaceAgentSessions();
+            }
+        });
+        actions.Children().Append(sessions);
         actions.Children().Append(status);
         panel.Children().Append(actions);
         SshHostsDock().Children().Append(panel);
     }
 
-    bool TerminalPage::_OpenConnectionTab(const std::wstring_view commandline, const std::wstring_view title)
+    bool TerminalPage::_OpenConnectionTab(const std::wstring_view commandline, const std::wstring_view title, const WorkspaceAgentLaunch* workspaceAgent)
     {
         using namespace winrt::Microsoft::Terminal::Settings::Model;
         NewTerminalArgs args;
@@ -952,12 +1106,13 @@ namespace winrt::TerminalApp::implementation
         args.Elevate(false);
 
         const auto azureType = Microsoft::Terminal::TerminalConnection::AzureConnection::ConnectionType();
-        if (const auto profile = _settings.GetProfileForArgs(args);
-            profile && profile.ConnectionType() == azureType && Microsoft::Terminal::TerminalConnection::AzureConnection::IsAzureConnectionAvailable())
+        const auto profile = _settings.GetProfileForArgs(args);
+        if (profile && ((profile.ConnectionType() == azureType && Microsoft::Terminal::TerminalConnection::AzureConnection::IsAzureConnectionAvailable()) ||
+                        (workspaceAgent && !profile.AgentProfileId().empty())))
         {
             for (const auto& candidate : _settings.ActiveProfiles())
             {
-                if (candidate.ConnectionType() != azureType)
+                if (candidate.ConnectionType() != azureType && (!workspaceAgent || candidate.AgentProfileId().empty()))
                 {
                     args.Profile(::Microsoft::Console::Utils::GuidToString(candidate.Guid()));
                     break;
@@ -968,7 +1123,7 @@ namespace winrt::TerminalApp::implementation
                 return false;
             }
         }
-        return _OpenNewTab(args) == S_OK;
+        return _OpenNewTab(args, false, workspaceAgent) == S_OK;
     }
 
     void TerminalPage::_ConnectWslDistribution(const std::wstring_view distribution, const std::wstring_view agent)
@@ -989,7 +1144,8 @@ namespace winrt::TerminalApp::implementation
                 _appendArgument(command, std::wstring{ L"exec " }.append(agent));
                 title.append(L" - ").append(agent);
             }
-            if (_OpenConnectionTab(command, title))
+            const auto launch = _workspaceAgentLaunch(agent, distribution, distribution, false);
+            if (_OpenConnectionTab(command, title, agent.empty() ? nullptr : &launch))
             {
                 return;
             }
@@ -1038,7 +1194,8 @@ namespace winrt::TerminalApp::implementation
                     {
                         title.append(L" - ").append(agent);
                     }
-                    if (!_OpenConnectionTab(OpenSsh::BuildCommandline(executable, *current, agent), title))
+                    const auto launch = _workspaceAgentLaunch(agent, current->id, current->name, true);
+                    if (!_OpenConnectionTab(OpenSsh::BuildCommandline(executable, *current, agent), title, agent.empty() ? nullptr : &launch))
                     {
                         error = RS_(L"SshHostsLaunchFailed");
                     }

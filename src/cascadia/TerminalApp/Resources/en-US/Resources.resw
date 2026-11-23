@@ -1808,6 +1808,38 @@ For all available options, run 'wt new-tab --help'.</value>
   <data name="SshHostsMenuItem" xml:space="preserve">
     <value>SSH hosts</value>
   </data>
+  <data name="WorkspaceAgentSessionsTitle" xml:space="preserve">
+    <value>Agent sessions</value>
+  </data>
+  <data name="WorkspaceAgentSessionsEmpty" xml:space="preserve">
+    <value>No open agent terminals from Connections.</value>
+  </data>
+  <data name="WorkspaceAgentSessionName" xml:space="preserve">
+    <value>{0} on {1}</value>
+    <comment>{0} is the agent name. {1} is the connection display name.</comment>
+  </data>
+  <data name="WorkspaceAgentSessionBackground" xml:space="preserve">
+    <value>Background tab</value>
+  </data>
+  <data name="WorkspaceAgentSessionWindow" xml:space="preserve">
+    <value>Window {0}</value>
+    <comment>{0} is the numeric window ID.</comment>
+  </data>
+  <data name="WorkspaceAgentSessionConnecting" xml:space="preserve">
+    <value>Connecting terminal</value>
+  </data>
+  <data name="WorkspaceAgentSessionAttached" xml:space="preserve">
+    <value>Terminal attached</value>
+  </data>
+  <data name="WorkspaceAgentSessionDisconnected" xml:space="preserve">
+    <value>Terminal disconnected</value>
+  </data>
+  <data name="WorkspaceAgentSessionRemoteUnknown" xml:space="preserve">
+    <value>Remote status unknown</value>
+  </data>
+  <data name="WorkspaceAgentSessionsMetricsUnavailable" xml:space="preserve">
+    <value>Token usage, cost, and subagents are unavailable for these sessions.</value>
+  </data>
   <data name="ConnectionsTitle" xml:space="preserve">
     <value>Connections</value>
   </data>

@@ -1255,7 +1255,7 @@ namespace SettingsModelUnitTests
             VERIFY_IS_NOT_NULL(azure);
             VERIFY_IS_FALSE(azure.Orphaned());
             VERIFY_ARE_EQUAL(L"Windows.Terminal.Azure", azure.Source());
-            VERIFY_ARE_EQUAL(Utils::GuidFromString(L"{d9fcfdfa-a479-412c-83b7-c5640e61cd62}"), azure.ConnectionType());
+            VERIFY_ARE_EQUAL(winrt::guid{ Utils::GuidFromString(L"{d9fcfdfa-a479-412c-83b7-c5640e61cd62}") }, azure.ConnectionType());
 
             const auto incomplete = loaded->FindProfile(Utils::GuidFromString(L"{6239a42c-3333-49a3-80bd-e8fdd045185c}"));
             VERIFY_IS_NOT_NULL(incomplete);

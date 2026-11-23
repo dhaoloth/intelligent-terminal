@@ -39,6 +39,15 @@ namespace winrt::TerminalApp::implementation
         uint64_t captureOrdinal{};
     };
 
+    struct WorkspaceAgentLaunch
+    {
+        winrt::hstring providerId;
+        winrt::hstring providerDisplayName;
+        winrt::hstring targetId;
+        winrt::hstring targetDisplayName;
+        bool remote{ false };
+    };
+
     struct ContentManager : ContentManagerT<ContentManager>
     {
     public:
@@ -159,6 +168,24 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::Tab BeginReattachKeptGroup(const winrt::guid& groupId);
         void CompleteKeptGroupReattach(const winrt::guid& groupId, bool committed);
         void NotifyPaneWindowChanged(const winrt::guid& paneId, uint64_t windowId);
+        // Metadata for native agent sessions launched by the application into
+        // an exact terminal pane. This is intentionally separate from ACP
+        // provider tracking above.
+        struct WorkspaceAgentSession
+        {
+            WorkspaceAgentLaunch launch;
+            uint64_t contentId{};
+            winrt::guid paneSessionId{};
+            uint64_t windowId{};
+            winrt::weak_ref<winrt::TerminalApp::TerminalPage> owner;
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState state{ winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Closed };
+            bool kept{ false };
+        };
+        bool RegisterWorkspaceAgentSession(uint64_t contentId, const winrt::guid& paneSessionId, uint64_t windowId, const winrt::TerminalApp::TerminalPage& owner, WorkspaceAgentLaunch launch);
+        bool UpdateWorkspaceAgentOwner(const winrt::guid& paneSessionId, uint64_t windowId, const winrt::TerminalApp::TerminalPage& owner);
+        void NotifyWorkspaceAgentConnectionStateChanged(uint64_t contentId);
+        void ReplaceWorkspaceAgentConnection(uint64_t contentId, std::optional<winrt::guid> paneSessionId);
+        std::vector<WorkspaceAgentSession> WorkspaceAgentSessions();
         void DiscardKeptGroup(const winrt::guid& groupId);
         void DiscardAllKeptGroups();
         winrt::Windows::Foundation::Collections::IVectorView<winrt::TerminalApp::IPaneContent> KeptPanes();
@@ -168,6 +195,7 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<winrt::TerminalApp::ContentManager, winrt::hstring> DetachedSessionEvent;
         til::event<winrt::delegate<winrt::guid, uint64_t>> PaneWindowChanged;
         til::event<winrt::delegate<winrt::guid>> AgentCompletionChanged;
+        til::typed_event<winrt::TerminalApp::ContentManager, winrt::Windows::Foundation::IInspectable> WorkspaceAgentSessionsChanged;
 
     private:
         mutable std::mutex _mutex;
@@ -220,12 +248,14 @@ namespace winrt::TerminalApp::implementation
         // preserves the live pane tree, helper lifetime and background protocol routing.
         winrt::Windows::System::DispatcherQueue _dispatcher{ winrt::Windows::System::DispatcherQueue::GetForCurrentThread() };
         std::unordered_map<uint64_t, AgentBinding> _agentBindings;
+        std::unordered_map<uint64_t, WorkspaceAgentSession> _workspaceAgentSessions;
         std::unordered_map<winrt::guid, KeptGroup> _keptGroups;
         uint64_t _keptGeometryCaptureOrdinal{};
         // Only kept groups own retention; the sidebar index must not keep tabs alive.
         std::unordered_map<winrt::hstring, winrt::weak_ref<winrt::TerminalApp::Tab>> _keepRunningTabs;
         void _CheckThread() const;
         void _NotifyKeptSessionsChanged() noexcept;
+        void _NotifyWorkspaceAgentSessionsChanged() noexcept;
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,
                             const winrt::Windows::Foundation::IInspectable& e);

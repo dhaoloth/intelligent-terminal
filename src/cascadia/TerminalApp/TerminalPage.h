@@ -62,6 +62,7 @@ namespace winrt::Microsoft::Terminal::Settings
 namespace winrt::TerminalApp::implementation
 {
     struct KeptWindowGeometry;
+    struct WorkspaceAgentLaunch;
     struct TerminalSettingsCache;
 
     inline constexpr uint32_t DefaultRowsToScroll{ 3 };
@@ -899,6 +900,8 @@ namespace winrt::TerminalApp::implementation
 
         TerminalApp::ContentManager _manager{ nullptr };
         winrt::event_token _keepRunningTabsChangedToken{};
+        winrt::event_token _workspaceAgentSessionsChangedToken{};
+        bool _workspaceAgentSessionsOpen{ false };
         winrt::event_token _paneWindowChangedToken{};
         winrt::event_token _agentCompletionChangedToken{};
 
@@ -933,9 +936,12 @@ namespace winrt::TerminalApp::implementation
         void _CreateNewTabFlyout();
         void _InitializeSshHosts();
         void _UpdateSshHostsDockLayout();
+        void _ToggleWorkspaceAgentSessions();
+        void _UpdateWorkspaceAgentSessions();
+        safe_void_coroutine _FocusWorkspaceAgentSession(uint64_t contentId, winrt::guid paneId);
         void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host, std::wstring_view agent = {});
         void _ConnectWslDistribution(std::wstring_view distribution, std::wstring_view agent = {});
-        bool _OpenConnectionTab(std::wstring_view commandline, std::wstring_view title);
+        bool _OpenConnectionTab(std::wstring_view commandline, std::wstring_view title, const WorkspaceAgentLaunch* workspaceAgent = nullptr);
         safe_void_coroutine _ShowSshHosts(std::optional<::Microsoft::Terminal::OpenSsh::SavedHost> host = std::nullopt);
         std::vector<winrt::Windows::UI::Xaml::Controls::MenuFlyoutItemBase> _CreateNewTabFlyoutItems(winrt::Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::NewTabMenuEntry> entries);
         winrt::Windows::UI::Xaml::Controls::IconElement _CreateNewTabFlyoutIcon(const winrt::hstring& icon);
@@ -943,8 +949,8 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutAction(const winrt::hstring& actionId, const winrt::hstring& iconPathOverride);
 
         void _OpenNewTabDropdown();
-        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false);
-        TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1, bool openInBackground = false);
+        HRESULT _OpenNewTab(const Microsoft::Terminal::Settings::Model::INewContentArgs& newContentArgs, bool openInBackground = false, const WorkspaceAgentLaunch* workspaceAgent = nullptr);
+        TerminalApp::Tab _CreateNewTabFromPane(std::shared_ptr<Pane> pane, uint32_t insertPosition = -1, bool openInBackground = false, const WorkspaceAgentLaunch* workspaceAgent = nullptr);
 
         std::wstring _evaluatePathForCwd(std::wstring_view path);
 

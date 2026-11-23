@@ -14,6 +14,7 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - Explicit import previews literal aliases from the top-level Windows OpenSSH configuration files. Import writes host records atomically, skips aliases already in the catalog, and leaves existing OpenSSH settings authoritative for imported aliases. An offline OpenSSH configuration check confirmed the alias launch retains the configured port, user, jump host, identity, and host-key policy.
 - The saved host editor accepts a literal OpenSSH jump alias for manually configured destinations. Shell tabs, native agent tabs, and discovery all pass the same jump alias. An offline `ssh -G` fixture verified destination and bastion configuration resolution.
 - The connection tree includes registered WSL distributions. Selecting a distribution or saved SSH host invokes bounded native agent discovery. Detected Codex, Claude Code, Hermes, and Qwen agents get child rows that launch the native CLI in the selected environment. Source and synthetic shell tests cover target routing and probe output. No real WSL or SSH target was used for those tests.
+- The Agent sessions panel tracks native agent terminals opened from Connections. It identifies target and window or background tab, and opens the same pane when activated. The terminal connection state is shown independently of provider state. SSH disconnection leaves remote status unknown. Provider usage, cost, and child sessions remain unavailable.
 - The fork stops creating new Azure Cloud Shell and Visual Studio profiles, retains compatible saved profiles, removes automatic Copilot onboarding and default selection, and removes the command palette's `?` delegation path and shortcut.
 - Terminal-managed error analysis and the built-in `/fix` command are removed from the active product paths. Legacy settings remain readable. Shell integration for command history and session signals is available as an explicit installation action under AI Agents settings.
 - Appearance settings can import portable fields from a chosen Windows Terminal `settings.json` into the fork's profile defaults. A separate GitHub Actions workflow builds an unsigned x64 MSIX using the existing package script.
@@ -35,7 +36,7 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - Validate the Windows build, both tab layouts, narrow windows, keyboard interaction, host persistence, terminal launch and authentication, and legacy profile and onboarding migrations.
 - Extend host management with broader import support, SSH agent and key management, editable proxy and multi-hop settings, tunnels, reconnect, and graphical SFTP. The first OpenSSH import reads literal `Host` aliases in the top-level files. Included files and wildcard patterns are open.
 - Validate discovery and native TUI launch for the four CLIs on authorized WSL and SSH targets. Interactive SSH password login remains available for terminals. Password-only hosts need an auth bridge before background discovery can work with that login method.
-- Add the shared session panel, provider-supported usage and subagent views, and unavailable states.
+- Validate session panel updates for window transfers, kept tabs, disconnect and restart on Windows. Add provider-supported usage and subagent views where verified sources expose them.
 - Verify appearance import, diagnostics removal, and explicit shell integration setup on Windows.
 
 ## Evidence
@@ -46,6 +47,7 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - Technical concept: `doc/specs/ssh-agent-workspace.md`, based on Astra Medium's independent source review.
 - Native discovery: `tools/wta/src/cli/native_probe.rs` and `src/cascadia/inc/WslDistributions.h`.
 - [Windows PR CI run for `692d78655`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45180163240): Rust build and unit tests passed. C++ compilation reported WinRT namespace and const-access errors, addressed in `66110a55a`.
+- [Windows PR CI run for `66110a55a`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45184793644): WindowsTerminal.exe linked and Rust passed. The C++ build job stopped when the settings test compared native and WinRT GUID types. The assertion now uses the WinRT type on both sides.
 - Intelligent Terminal: `src/cascadia/TerminalSettingsModel/SshHostGenerator.cpp`, `src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp`, `src/cascadia/TerminalSettingsEditor/Profiles_Base.xaml`, `src/cascadia/TerminalApp/TabStrip.xaml`, and `tools/wta/src/agent_check.rs`.
 - Termora: `../termora/src/main/kotlin/app/termora/tree/NewHostTree.kt`, `../termora/src/main/kotlin/app/termora/plugin/internal/ssh/SSHHostOptionsPane.kt`, and `../termora/src/main/kotlin/app/termora/transfer/internal/sftp/SFTPTransferProtocolProvider.kt`.
 

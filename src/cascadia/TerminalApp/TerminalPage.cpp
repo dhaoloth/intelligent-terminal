@@ -303,6 +303,14 @@ namespace winrt::TerminalApp::implementation
                 if (const auto page = weakThis.get())
                 {
                     page->_UpdateSidebarHistoryCurrentSession();
+                    page->_UpdateWorkspaceAgentSessions();
+                }
+            });
+        _workspaceAgentSessionsChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->WorkspaceAgentSessionsChanged(
+            [weakThis{ get_weak() }](auto&&, auto&&) {
+                if (const auto page = weakThis.get())
+                {
+                    page->_UpdateWorkspaceAgentSessions();
                 }
             });
         _paneWindowChangedToken = winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(
@@ -333,6 +341,7 @@ namespace winrt::TerminalApp::implementation
     TerminalPage::~TerminalPage()
     {
         winrt::get_self<implementation::ContentManager>(_manager)->KeepRunningTabsChanged(_keepRunningTabsChangedToken);
+        winrt::get_self<implementation::ContentManager>(_manager)->WorkspaceAgentSessionsChanged(_workspaceAgentSessionsChangedToken);
         winrt::get_self<implementation::ContentManager>(_manager)->PaneWindowChanged(_paneWindowChangedToken);
         winrt::get_self<implementation::ContentManager>(_manager)->AgentCompletionChanged(_agentCompletionChangedToken);
         _sidebarIntroductionShuttingDown = true;
@@ -15203,6 +15212,7 @@ namespace winrt::TerminalApp::implementation
                             auto term2 = weakTerm.get();
                             if (term2)
                             {
+                                winrt::get_self<ContentManager>(page->_manager)->NotifyWorkspaceAgentConnectionStateChanged(term2.ContentId());
                                 if (stateStr == "connected")
                                 {
                                     page->_AttachOrUpdateRichTabControl(term2);
@@ -17006,7 +17016,9 @@ namespace winrt::TerminalApp::implementation
         {
             try
             {
-                winrt::get_self<implementation::ContentManager>(_manager)->NotifyPaneWindowChanged(paneId, _WindowProperties.WindowId());
+                const auto manager = winrt::get_self<implementation::ContentManager>(_manager);
+                manager->UpdateWorkspaceAgentOwner(paneId, _WindowProperties.WindowId(), *this);
+                manager->NotifyPaneWindowChanged(paneId, _WindowProperties.WindowId());
             }
             CATCH_LOG()
         }
@@ -17376,8 +17388,13 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tabImpl{ _GetFocusedTabImpl() })
             {
-                const auto dock = const_cast<TerminalPage*>(this)->SshHostsDock();
-                const auto dockWidth = widthOrHeight && dock.Visibility() == Visibility::Visible ? dock.ActualWidth() : 0.0;
+                const auto page = const_cast<TerminalPage*>(this);
+                const auto left = page->SshHostsDock();
+                const auto right = page->WorkspaceAgentSessionsDock();
+                const auto visibleWidth = [](const auto& dock) {
+                    return dock.Visibility() == Visibility::Visible ? dock.ActualWidth() : 0.0;
+                };
+                const auto dockWidth = widthOrHeight ? visibleWidth(left) + visibleWidth(right) : 0.0;
                 const auto terminalDimension = static_cast<float>(std::max(0.0, static_cast<double>(dimension) - dockWidth));
                 return tabImpl->CalcSnappedDimension(widthOrHeight, terminalDimension) + static_cast<float>(dockWidth);
             }
@@ -18677,8 +18694,13 @@ namespace winrt::TerminalApp::implementation
         // The previous client may have left dirty modes (e.g., bracketed
         // paste, mouse tracking, alternate buffer, kitty keyboard) that
         // would corrupt input/output for the new shell process.
+        const auto oldConpty = termControl.Connection().try_as<TerminalConnection::ConptyConnection>();
+        const auto newConpty = connection.try_as<TerminalConnection::ConptyConnection>();
+        const auto sameCommand = oldConpty && newConpty && oldConpty.Commandline() == newConpty.Commandline();
         termControl.HardResetWithoutErase();
         termControl.Connection(connection);
+        manager->ReplaceWorkspaceAgentConnection(
+            termControl.ContentId(), sameCommand ? std::make_optional(connection.SessionId()) : std::nullopt);
         if (nativeFallback)
         {
             if (resumeBinding && !manager->NativeAgentProviderId(termControl.ContentId()).empty())
