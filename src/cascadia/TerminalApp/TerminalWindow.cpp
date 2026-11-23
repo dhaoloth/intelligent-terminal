@@ -696,7 +696,8 @@ namespace winrt::TerminalApp::implementation
             };
         }
 
-        if (hasExplicitSize || (proposedSize.Width == 0 && proposedSize.Height == 0))
+        const bool sizeFromTerminal = hasExplicitSize || (proposedSize.Width == 0 && proposedSize.Height == 0);
+        if (sizeFromTerminal)
         {
             // Use the default profile to determine how big of a window we need.
             const auto settings{ Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, nullptr) };
@@ -710,7 +711,8 @@ namespace winrt::TerminalApp::implementation
         }
 
         const bool freRequired = IsFreRequired();
-        const bool isDefaultLaunchMode = GetLaunchMode() == LaunchMode::DefaultMode;
+        const auto launchMode = GetLaunchMode();
+        const bool isDefaultLaunchMode = launchMode == LaunchMode::DefaultMode;
         if (ShouldUseFreDefaultWindowSize(freRequired,
                                           hasExplicitSize,
                                           hasPersistedSize,
@@ -725,6 +727,15 @@ namespace winrt::TerminalApp::implementation
                 static_cast<float>(freSize.width),
                 static_cast<float>(freSize.height),
             };
+        }
+
+        if (sizeFromTerminal && !freRequired &&
+            !WI_IsFlagSet(launchMode, LaunchMode::FocusMode) &&
+            (!WI_IsFlagSet(launchMode, LaunchMode::FullscreenMode) || _settings.GlobalSettings().ShowTabsFullscreen()))
+        {
+            // The dock occupies at most one third of the resulting workspace.
+            const auto dockWidth = static_cast<float>(TerminalPage::SshHostsDockWidth) * scale;
+            proposedSize.Width += std::min(dockWidth, proposedSize.Width / 2.0f);
         }
 
         // GH#2061 - If the global setting "Always show tab bar" is

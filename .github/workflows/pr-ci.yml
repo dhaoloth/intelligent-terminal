@@ -34,7 +34,7 @@ on:
       - 'vcpkg.json'
       - 'dirs'
   push:
-    branches: [main]
+    branches: [main, dev/dhaoloth/ssh-agent-workspace]
   workflow_dispatch:
 
 permissions:

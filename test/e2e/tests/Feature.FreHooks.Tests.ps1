@@ -46,7 +46,7 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
         Remove-CopilotHooksEntry
         Get-CopilotHooksInstalled | Should -BeFalse -Because 'the baseline must be not-installed so a later true proves the FRE installed it'
 
-        $app = Start-TerminalFre -Package Dev
+        $app = Start-Terminal -Package Dev -ShowFre -Settings @{ acpAgent = 'copilot' }
         try {
             Invoke-UiElement -App $app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
             Start-Sleep -Seconds 1
@@ -115,7 +115,7 @@ Describe 'Feature §0 FRE session-management hook install' -Tag 'Feature' -Skip:
     It 'Hook install failure blocks once, disables Sessions, and succeeds on retry' {
         Remove-CopilotHooksEntry
         Get-CopilotHooksInstalled | Should -BeFalse
-        $app = Start-TerminalFre -Package Dev
+        $app = Start-Terminal -Package Dev -ShowFre -Settings @{ acpAgent = 'copilot' }
         try {
             Invoke-UiElement -App $app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
             Start-Sleep -Seconds 1

@@ -20,8 +20,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     static void _FormatInlineShortcuts(const RichTextBlock& textBlock, std::wstring_view text, const DataTemplate& keyChordTemplate)
     {
-        constexpr std::wstring_view promptShortcut{ L"Alt+Shift+/" };
-        constexpr std::wstring_view directShortcut{ L"Alt+Shift+B" };
+        constexpr std::wstring_view shortcut{ L"Alt+Shift+B" };
         textBlock.Blocks().Clear();
         while (!text.empty())
         {
@@ -39,16 +38,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             };
             while (!line.empty())
             {
-                const auto promptPos = line.find(promptShortcut);
-                const auto directPos = line.find(directShortcut);
-                const auto pos = std::min(promptPos, directPos);
+                const auto pos = line.find(shortcut);
                 if (pos == std::wstring_view::npos)
                 {
                     appendText(line);
                     break;
                 }
 
-                const auto shortcut = promptPos <= directPos ? promptShortcut : directShortcut;
                 appendText(line.substr(0, pos));
                 const auto badge = keyChordTemplate.LoadContent().as<Border>();
                 const auto label = badge.Child().as<TextBlock>();

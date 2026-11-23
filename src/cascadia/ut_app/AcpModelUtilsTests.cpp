@@ -118,10 +118,10 @@ namespace TerminalAppUnitTests
             Registry::BuiltinAcpAgents.begin(), Registry::BuiltinAcpAgents.end()
         };
         const auto choices = Availability::BuildFreAgentCandidates(allowed, snapshot, {}, {});
-        VERIFY_ARE_EQUAL(size_t{ 2 }, choices.size());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, choices.size());
         VERIFY_ARE_EQUAL(std::wstring{ L"antigravity" }, std::wstring{ choices.back().id });
         const std::vector<Registry::BuiltinAgent> policyAllowed{ Registry::BuiltinAcpAgents.front() };
-        VERIFY_ARE_EQUAL(size_t{ 1 }, Availability::BuildFreAgentCandidates(policyAllowed, snapshot, {}, {}).size());
+        VERIFY_IS_TRUE(Availability::BuildFreAgentCandidates(policyAllowed, snapshot, {}, {}).empty());
         payload["availability"][0]["acp_bootstrap_available"] = true;
         VERIFY_IS_FALSE(Availability::ParseHostAgentSnapshot(
                             Json::writeString(Json::StreamWriterBuilder{}, payload))

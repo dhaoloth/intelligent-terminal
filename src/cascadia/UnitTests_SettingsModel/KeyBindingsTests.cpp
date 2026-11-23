@@ -1111,7 +1111,6 @@ namespace SettingsModelUnitTests
         verifyBinding(L"ctrl+shift+i", L"Terminal.FocusAgentPane");
         verifyBinding(L"ctrl+shift+/", L"Terminal.OpenAgentSessions");
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
-        verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
         verifyBinding(L"ctrl+shift+s", L"Terminal.ToggleSidebar");
         verifyBinding(L"ctrl+f", L"Terminal.TabSearch");
         verifyBinding(L"ctrl+shift+f", L"Terminal.FindText");
@@ -1120,16 +1119,17 @@ namespace SettingsModelUnitTests
         verifyBinding(L"ctrl+alt+up", L"Terminal.PrevSidebarTab");
         verifyBinding(L"ctrl+tab", L"Terminal.NextTab");
         verifyBinding(L"ctrl+shift+tab", L"Terminal.PrevTab");
+
+        const auto retiredChord{ KeyChordSerialization::FromString(L"alt+shift+/") };
+        VERIFY_IS_NOT_NULL(retiredChord);
+        VERIFY_IS_NULL(actionMap.GetActionByKeyChord(retiredChord));
+        VERIFY_IS_NULL(actionMap.GetActionByID(L"Terminal.OpenAgentDelegation"));
     }
 
     void KeyBindingsTests::AgentActionsParse()
     {
-        // The agent command keywords must each parse to their ShortcutAction,
-        // and the delegate-palette command must parse to a commandPalette action
-        // carrying the AgentDelegation launch mode. This pins the JSON command
-        // surface the FRE / Settings / command-palette entry points rely on
-        // (the "Command action works" checklist items), independent of which
-        // keys happen to be bound to them.
+        // Keep parsing agent action keywords and saved commandPalette actions
+        // with the legacy AgentDelegation launch mode.
         const std::string bindingsString{ R"([
             { "keys": ["ctrl+a"], "id": "Test.OpenAgentPane",       "command": "openAgentPane" },
             { "keys": ["ctrl+b"], "id": "Test.FocusAgentPane",      "command": "focusAgentPane" },

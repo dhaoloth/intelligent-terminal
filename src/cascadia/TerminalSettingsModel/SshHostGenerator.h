@@ -31,7 +31,6 @@ namespace winrt::Microsoft::Terminal::Settings::Model
     private:
         static const std::wregex _configKeyValueRegex;
 
-        static bool _tryFindSshExePath(std::wstring& sshExePath) noexcept;
         static bool _tryParseConfigKeyValue(const std::wstring_view& line, std::wstring& key, std::wstring& value) noexcept;
         static void _getHostNamesFromConfigFile(const std::wstring_view& configPath, std::vector<std::wstring>& hostNames) noexcept;
     };

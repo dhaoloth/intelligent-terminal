@@ -61,7 +61,7 @@ Describe 'Telemetry funnel scenario helpers' -Tag Unit {
     It 'All scenario entry points exist immediately after dot-sourcing' {
         foreach ($name in @(
             'Invoke-TelemetryConversation', 'Invoke-TelemetryAutoFixPolicy', 'Invoke-TelemetryHotPolicyFailure', 'Invoke-TelemetryOffer',
-            'Invoke-TelemetryPalette', 'Invoke-TelemetryProviderChanges', 'Invoke-TelemetryStartupCase',
+            'Invoke-TelemetryProviderChanges', 'Invoke-TelemetryStartupCase',
             'Invoke-TelemetrySecondWindow', 'Invoke-TelemetryColdAutoFixPolicy', 'Wait-TelemetryOnlyOwnedAgent'
         )) {
             Get-Command $name -CommandType Function -ErrorAction Stop | Should -Not -BeNullOrEmpty

@@ -74,8 +74,6 @@ The settings model is authoritative; check
 | Trigger | Behavior |
 | --- | --- |
 | `>Toggle AI assistant` | Stash or restore the current tab's agent pane |
-| `?<prompt>` | Delegate a prompt through WTA |
-| `?` | No-op |
 | `&<prompt>` | Reserved background-task entry point; currently a no-op |
 
 Important invariants:

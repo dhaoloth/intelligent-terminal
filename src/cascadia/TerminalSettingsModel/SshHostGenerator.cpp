@@ -7,21 +7,13 @@
 #include "../../inc/DefaultSettings.h"
 
 #include "DynamicProfileUtils.h"
+#include "../inc/OpenSshExecutable.h"
 
 static constexpr std::wstring_view SshHostGeneratorNamespace{ L"Windows.Terminal.SSH" };
 
 static constexpr std::wstring_view PROFILE_TITLE_PREFIX = L"SSH - ";
 static constexpr std::wstring_view PROFILE_ICON_PATH = L"\uE977"; // PC1
 static constexpr std::wstring_view GENERATOR_ICON_PATH = L"\uE969"; // StorageNetworkWireless
-
-// OpenSSH is installed under System32 when installed via Optional Features
-static constexpr std::wstring_view SSH_EXE_PATH1 = L"%SystemRoot%\\System32\\OpenSSH\\ssh.exe";
-
-// OpenSSH (x86/x64) is installed under Program Files when installed via MSI
-static constexpr std::wstring_view SSH_EXE_PATH2 = L"%ProgramFiles%\\OpenSSH\\ssh.exe";
-
-// OpenSSH (x86) is installed under Program Files x86 when installed via MSI on x64 machine
-static constexpr std::wstring_view SSH_EXE_PATH3 = L"%ProgramFiles(x86)%\\OpenSSH\\ssh.exe";
 
 static constexpr std::wstring_view SSH_SYSTEM_CONFIG_PATH = L"%ProgramData%\\ssh\\ssh_config";
 static constexpr std::wstring_view SSH_USER_CONFIG_PATH = L"%UserProfile%\\.ssh\\config";
@@ -42,24 +34,6 @@ winrt::hstring _getProfileName(const std::wstring_view& hostName) noexcept
 winrt::hstring _getProfileCommandLine(const std::wstring_view& sshExePath, const std::wstring_view& hostName) noexcept
 {
     return til::hstring_format(FMT_COMPILE(LR"("{0}" {1})"), sshExePath, hostName);
-}
-
-/*static*/ bool SshHostGenerator::_tryFindSshExePath(std::wstring& sshExePath) noexcept
-{
-    try
-    {
-        for (const auto& path : { SSH_EXE_PATH1, SSH_EXE_PATH2, SSH_EXE_PATH3 })
-        {
-            if (std::filesystem::exists(wil::ExpandEnvironmentStringsW<std::wstring>(path.data())))
-            {
-                sshExePath = path;
-                return true;
-            }
-        }
-    }
-    CATCH_LOG();
-
-    return false;
 }
 
 /*static*/ bool SshHostGenerator::_tryParseConfigKeyValue(const std::wstring_view& line, std::wstring& key, std::wstring& value) noexcept
@@ -146,8 +120,7 @@ std::wstring_view SshHostGenerator::GetIcon() const noexcept
 // - <A list of SSH host profiles.>
 void SshHostGenerator::GenerateProfiles(std::vector<winrt::com_ptr<implementation::Profile>>& profiles) const
 {
-    std::wstring sshExePath;
-    if (_tryFindSshExePath(sshExePath))
+    if (const auto sshExePath = ::Microsoft::Terminal::OpenSsh::FindExecutable(); !sshExePath.empty())
     {
         std::vector<std::wstring> hostNames;
 

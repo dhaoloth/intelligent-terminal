@@ -1301,7 +1301,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 if (_acpAgentList.GetAt(i).IsAddNew()) return _acpAgentList.GetAt(i);
             }
         }
-        auto match = _FindEntryById(_acpAgentList, _GlobalSettings.AcpAgent());
+        const auto currentId = _GlobalSettings.AcpAgent();
+        if (currentId.empty()) return nullptr;
+        auto match = _FindEntryById(_acpAgentList, currentId);
         if (match) return match;
 
         // Saved agent is not in the filtered list (blocked by GPO or not
@@ -1440,7 +1442,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 if (_delegateAgentList.GetAt(i).IsAddNew()) return _delegateAgentList.GetAt(i);
             }
         }
-        auto match = _FindEntryById(_delegateAgentList, _GlobalSettings.DelegateAgent());
+        const auto currentId = _GlobalSettings.DelegateAgent();
+        if (currentId.empty()) return nullptr;
+        auto match = _FindEntryById(_delegateAgentList, currentId);
         if (match) return match;
 
         // Saved agent is not in the filtered list (blocked by GPO or not

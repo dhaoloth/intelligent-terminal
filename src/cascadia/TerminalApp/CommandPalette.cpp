@@ -4,7 +4,6 @@
 #include "pch.h"
 #include "CommandPalette.h"
 #include "CommandPaletteItems.h"
-#include "../../types/inc/utils.hpp"
 
 #include "CommandPalette.g.cpp"
 
@@ -40,7 +39,6 @@ namespace winrt::TerminalApp::implementation
         // Whatever is hosting us will enable us by setting our visibility to
         // "Visible". When that happens, set focus to our search box.
         RegisterPropertyChangedCallback(UIElement::VisibilityProperty(), [this](auto&&, auto&&) {
-            _recordAgentPromptEntry();
             if (Visibility() == Visibility::Visible)
             {
                 _dismissedByFocusLoss = false;
@@ -355,7 +353,6 @@ namespace winrt::TerminalApp::implementation
         }
         else if (key == VirtualKey::Back && _searchBox().Text().empty() && _lastFilterTextWasEmpty &&
                  (_currentMode == CommandPaletteMode::ActionMode ||
-                  _currentMode == CommandPaletteMode::AgentForegroundMode ||
                   _currentMode == CommandPaletteMode::AgentBackgroundMode))
         {
             // If the last filter text was empty, and we're backspacing from
@@ -745,9 +742,8 @@ namespace winrt::TerminalApp::implementation
             return _tabSwitcherMode == TabSwitcherMode::MostRecentlyUsed ? _mruTabActions : _tabActions;
         case CommandPaletteMode::CommandlineMode:
             return _loadRecentCommands();
-        case CommandPaletteMode::AgentForegroundMode:
         case CommandPaletteMode::AgentBackgroundMode:
-            // Agent modes are free-text input; no list to filter
+            // Background tasks use free-text input.
             return winrt::single_threaded_vector<winrt::TerminalApp::FilteredCommand>();
         default:
             return _allCommands;
@@ -769,9 +765,9 @@ namespace winrt::TerminalApp::implementation
         {
             _dispatchCommandline(filteredCommand);
         }
-        else if (_currentMode == CommandPaletteMode::AgentForegroundMode || _currentMode == CommandPaletteMode::AgentBackgroundMode)
+        else if (_currentMode == CommandPaletteMode::AgentBackgroundMode)
         {
-            _dispatchAgentPrompt();
+            _dispatchBackgroundAgentTask();
         }
         else if (_currentMode == CommandPaletteMode::TabSwitchMode || _currentMode == CommandPaletteMode::TabSearchMode)
         {
@@ -906,14 +902,12 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Method Description:
-    // - Dispatch the user's free-text input as an agent prompt.
-    //   In foreground mode, raise AgentForegroundPromptRequested.
-    //   In background mode, raise AgentBackgroundTaskRequested.
+    // - Dispatch the user's free-text input as a background agent task.
     // Arguments:
     // - <none>
     // Return Value:
     // - <none>
-    void CommandPalette::_dispatchAgentPrompt()
+    void CommandPalette::_dispatchBackgroundAgentTask()
     {
         const auto promptText = winrt::hstring(_getTrimmedInput());
         if (promptText.empty())
@@ -924,21 +918,13 @@ namespace winrt::TerminalApp::implementation
         TraceLoggingWrite(
             g_hTerminalAppProvider,
             "CommandPaletteDispatchedAgentPrompt",
-            TraceLoggingWideString(_currentMode == CommandPaletteMode::AgentForegroundMode ? _agentPromptEntryId.c_str() : L"", "EntryId"),
+            TraceLoggingWideString(L"", "EntryId"),
             TraceLoggingDescription("Event emitted when the user submits an agent prompt via the Command Palette"),
-            TraceLoggingBoolean(_currentMode == CommandPaletteMode::AgentBackgroundMode, "IsBackgroundMode", "Whether this is a background agent task"),
+            TraceLoggingBoolean(true, "IsBackgroundMode", "Whether this is a background agent task"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
 
-        if (_currentMode == CommandPaletteMode::AgentForegroundMode)
-        {
-            AgentForegroundPromptRequested.raise(*this, promptText);
-        }
-        else if (_currentMode == CommandPaletteMode::AgentBackgroundMode)
-        {
-            AgentBackgroundTaskRequested.raise(*this, promptText);
-        }
-
+        AgentBackgroundTaskRequested.raise(*this, promptText);
         _close();
     }
 
@@ -1017,10 +1003,9 @@ namespace winrt::TerminalApp::implementation
 
         _updateFilteredActions();
 
-        // In the command line mode and agent modes we want the user to explicitly select the command
+        // In command-line and background agent modes we want the user to explicitly select the command.
         _filteredActionsView().SelectedIndex(
             (_currentMode == CommandPaletteMode::CommandlineMode ||
-             _currentMode == CommandPaletteMode::AgentForegroundMode ||
              _currentMode == CommandPaletteMode::AgentBackgroundMode) ? -1 : 0);
 
         if (_currentMode == CommandPaletteMode::TabSearchMode || _currentMode == CommandPaletteMode::ActionMode)
@@ -1086,10 +1071,6 @@ namespace winrt::TerminalApp::implementation
             if (inputText[0] == L'>')
             {
                 newMode = CommandPaletteMode::ActionMode;
-            }
-            else if (inputText[0] == L'?')
-            {
-                newMode = CommandPaletteMode::AgentForegroundMode;
             }
             else if (inputText[0] == L'&')
             {
@@ -1174,9 +1155,8 @@ namespace winrt::TerminalApp::implementation
         case CommandPaletteLaunchMode::CommandLine:
             mode = CommandPaletteMode::CommandlineMode;
             break;
+        // Saved agentDelegation actions open the regular action palette.
         case CommandPaletteLaunchMode::AgentDelegation:
-            mode = CommandPaletteMode::AgentForegroundMode;
-            break;
         default:
             mode = CommandPaletteMode::ActionMode;
             break;
@@ -1221,13 +1201,6 @@ namespace winrt::TerminalApp::implementation
             PrefixCharacter(L"");
             modeAnnouncementResourceKey = USES_RESOURCE(L"CommandPaletteModeAnnouncement_CommandlineMode");
             break;
-        case CommandPaletteMode::AgentForegroundMode:
-            SearchBoxPlaceholderText(RS_(L"CmdPalAgentForegroundPrompt"));
-            NoMatchesText(L"");
-            ControlName(RS_(L"CommandPaletteControlName"));
-            PrefixCharacter(L"?");
-            modeAnnouncementResourceKey = USES_RESOURCE(L"CommandPaletteModeAnnouncement_AgentForegroundMode");
-            break;
         case CommandPaletteMode::AgentBackgroundMode:
             SearchBoxPlaceholderText(RS_(L"CmdPalAgentBackgroundPrompt"));
             NoMatchesText(L"");
@@ -1264,26 +1237,6 @@ namespace winrt::TerminalApp::implementation
         // clear + append when switching between modes.
         _filteredActions.Clear();
         _updateFilteredActions();
-        _recordAgentPromptEntry();
-    }
-
-    void CommandPalette::_recordAgentPromptEntry()
-    {
-        if (_agentPromptEntry.Update(Visibility() == Visibility::Visible, _currentMode == CommandPaletteMode::AgentForegroundMode))
-        {
-            _agentPromptEntryId = winrt::hstring{ ::Microsoft::Console::Utils::GuidToString(::Microsoft::Console::Utils::CreateGuid()) };
-            TraceLoggingWrite(
-                g_hTerminalAppProvider,
-                "CommandPaletteAgentPromptEntered",
-                TraceLoggingWideString(_agentPromptEntryId.c_str(), "EntryId"),
-                TraceLoggingDescription("Event emitted when the user enters the visible foreground agent prompt mode"),
-                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-        }
-        else if (!_agentPromptEntry.Active())
-        {
-            _agentPromptEntryId = {};
-        }
     }
 
     // Method Description:

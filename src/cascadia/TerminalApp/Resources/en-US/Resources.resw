@@ -1801,4 +1801,127 @@ For all available options, run 'wt new-tab --help'.</value>
     <value>Waiting for authorization...</value>
     <comment>Compact agent-status label for a program blocked on authentication. Reuses the localized WTA authorization status without its spinner.</comment>
   </data>
+  <data name="SshHostsMenuItem" xml:space="preserve">
+    <value>SSH hosts</value>
+  </data>
+  <data name="SshHostsConnect" xml:space="preserve">
+    <value>Connect</value>
+  </data>
+  <data name="SshHostsSearch" xml:space="preserve">
+    <value>Search saved hosts</value>
+  </data>
+  <data name="SshHostsNoMatches" xml:space="preserve">
+    <value>No saved hosts match your search.</value>
+  </data>
+  <data name="SshHostsImportAliases" xml:space="preserve">
+    <value>Import OpenSSH aliases</value>
+  </data>
+  <data name="SshHostsImportPreview" xml:space="preserve">
+    <value>Review OpenSSH aliases</value>
+  </data>
+  <data name="SshHostsImportDescription" xml:space="preserve">
+    <value>These aliases will be added to your saved hosts. OpenSSH configuration supplies their connection settings.</value>
+  </data>
+  <data name="SshHostsImportEmpty" xml:space="preserve">
+    <value>No importable host aliases were found in the OpenSSH configuration.</value>
+  </data>
+  <data name="SshHostsImportConfirm" xml:space="preserve">
+    <value>Import aliases</value>
+  </data>
+  <data name="SshHostsImportSucceeded" xml:space="preserve">
+    <value>OpenSSH aliases were added to saved hosts.</value>
+  </data>
+  <data name="SshHostsImportNothingNew" xml:space="preserve">
+    <value>All listed OpenSSH aliases are already saved.</value>
+  </data>
+  <data name="SshHostsImportFailed" xml:space="preserve">
+    <value>Could not import OpenSSH aliases.</value>
+  </data>
+  <data name="SshHostsImportReadFailed" xml:space="preserve">
+    <value>Could not read OpenSSH aliases.</value>
+  </data>
+  <data name="SshHostsConfigValuesInfo" xml:space="preserve">
+    <value>The alias and its connection settings, including host name, port, username, and key, are supplied by your OpenSSH configuration.</value>
+  </data>
+  <data name="SshHostsClose" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="SshHostsAdd" xml:space="preserve">
+    <value>New host</value>
+  </data>
+  <data name="SshHostsEdit" xml:space="preserve">
+    <value>Edit host</value>
+  </data>
+  <data name="SshHostsName" xml:space="preserve">
+    <value>Display name</value>
+  </data>
+  <data name="SshHostsGroup" xml:space="preserve">
+    <value>Group (optional)</value>
+  </data>
+  <data name="SshHostsGroupHint" xml:space="preserve">
+    <value>For example, Work/Production</value>
+  </data>
+  <data name="SshHostsAddress" xml:space="preserve">
+    <value>Host name or IP address</value>
+  </data>
+  <data name="SshHostsPort" xml:space="preserve">
+    <value>Port</value>
+  </data>
+  <data name="SshHostsUsername" xml:space="preserve">
+    <value>Username (optional)</value>
+  </data>
+  <data name="SshHostsIdentity" xml:space="preserve">
+    <value>Private key path (optional)</value>
+  </data>
+  <data name="SshHostsIdentityHint" xml:space="preserve">
+    <value>Leave blank for password authentication</value>
+  </data>
+  <data name="SshHostsSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="SshHostsRemove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="SshHostsConfirmRemove" xml:space="preserve">
+    <value>Remove saved host</value>
+  </data>
+  <data name="SshHostsInvalidName" xml:space="preserve">
+    <value>Enter a display name up to 120 characters with no leading or trailing spaces.</value>
+  </data>
+  <data name="SshHostsInvalidGroup" xml:space="preserve">
+    <value>Enter group names separated by /. Each name can have up to 120 characters, and the path supports up to eight levels and 512 characters.</value>
+  </data>
+  <data name="SshHostsInvalidAddress" xml:space="preserve">
+    <value>Enter a host name or IP address. Enter IPv6 addresses without brackets.</value>
+  </data>
+  <data name="SshHostsInvalidPort" xml:space="preserve">
+    <value>Enter a port from 1 to 65535.</value>
+  </data>
+  <data name="SshHostsInvalidUsername" xml:space="preserve">
+    <value>Enter a username with letters, digits, periods, hyphens or underscores. The first character cannot be a hyphen.</value>
+  </data>
+  <data name="SshHostsInvalidIdentity" xml:space="preserve">
+    <value>Enter an absolute private key path such as C:\Users\you\.ssh\id_ed25519, without environment variables.</value>
+  </data>
+  <data name="SshHostsIdentityUnavailable" xml:space="preserve">
+    <value>The selected private key file is missing or inaccessible.</value>
+  </data>
+  <data name="SshHostsReadFailed" xml:space="preserve">
+    <value>Could not read the saved SSH hosts.</value>
+  </data>
+  <data name="SshHostsWriteFailed" xml:space="preserve">
+    <value>Could not save your changes to the SSH hosts.</value>
+  </data>
+  <data name="SshHostsWriteBusy" xml:space="preserve">
+    <value>The saved SSH hosts are busy. Try again.</value>
+  </data>
+  <data name="SshHostsChanged" xml:space="preserve">
+    <value>This SSH host changed in another window. The latest changes were kept.</value>
+  </data>
+  <data name="SshHostsOpenSshMissing" xml:space="preserve">
+    <value>Windows OpenSSH Client was not found. Install it to connect to this host.</value>
+  </data>
+  <data name="SshHostsLaunchFailed" xml:space="preserve">
+    <value>Could not open the SSH terminal tab.</value>
+  </data>
 </root>

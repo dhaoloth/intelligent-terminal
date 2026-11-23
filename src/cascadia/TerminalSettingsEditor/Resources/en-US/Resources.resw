@@ -788,14 +788,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Error details</value>
     <comment>Header of a read-only, selectable text field showing safely filtered native startup diagnostics separately from the localized failure summary.</comment>
   </data>
-  <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
+  <data name="AIAgents_InteractiveAgent.Header" xml:space="preserve">
     <value>Agent CLI</value>
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
-  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Create a new tab with your preferred agent CLI, optionally including a prompt and context from the active pane.
-Alt+Shift+/ enter a prompt; Alt+Shift+B launch without an initial prompt.</value>
-    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep exactly one line break between the description and the shortcut reference. The UI renders the hotkeys with the same keycap style as Settings &gt; Actions. Start the description after each shortcut with lowercase where the language uses case. Context comes from the active pane; launching without an initial prompt is still interactive. Separate each hotkey and its description with a space, not a colon.</comment>
+  <data name="AIAgents_InteractiveAgent.HelpText" xml:space="preserve">
+    <value>Choose the agent CLI to open in an interactive terminal tab.
+Alt+Shift+B open a new agent tab.</value>
+    <comment>{Locked="CLI","Alt+Shift+B"} Agent CLI help in Settings &gt; Agents. Keep one line break before the shortcut. The UI renders the shortcut as a keycap.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
     <value>Error detection</value>

@@ -42,6 +42,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(TestLayerUserDefaultsBeforeProfiles);
         TEST_METHOD(TestDontLayerGuidFromUserDefaults);
         TEST_METHOD(TestLayerUserDefaultsOnDynamics);
+        TEST_METHOD(RetiredGeneratorsDoNotAddProfiles);
+        TEST_METHOD(PreserveSavedRetiredGeneratorProfiles);
         TEST_METHOD(FindMissingProfile);
         TEST_METHOD(ValidateKeybindingsWarnings);
         TEST_METHOD(ValidateColorSchemeInCommands);
@@ -1181,6 +1183,88 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(4444, allProfiles.GetAt(1).HistorySize());
         VERIFY_ARE_EQUAL(5555, allProfiles.GetAt(2).HistorySize());
         VERIFY_ARE_EQUAL(1234, allProfiles.GetAt(3).HistorySize());
+    }
+
+    void DeserializationTests::RetiredGeneratorsDoNotAddProfiles()
+    {
+        static constexpr std::string_view freshSettings{ R"({
+            "disabledProfileSources": [
+                "Windows.Terminal.PowershellCore",
+                "Windows.Terminal.Wsl",
+                "Windows.Terminal.SSH",
+                "IntelligentTerminal.AgentProfiles"
+            ]
+        })" };
+        implementation::SettingsLoader loader{ freshSettings, implementation::LoadStringResource(IDR_DEFAULTS) };
+        const auto inboxProfileCount = loader.inboxSettings.profiles.size();
+        loader.GenerateProfiles();
+        VERIFY_ARE_EQUAL(inboxProfileCount, loader.inboxSettings.profiles.size());
+    }
+
+    void DeserializationTests::PreserveSavedRetiredGeneratorProfiles()
+    {
+        static constexpr std::string_view userSettings{ R"({
+            "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+            "profiles": [
+                {
+                    "name": "My Visual Studio profile",
+                    "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
+                    "source": "Windows.Terminal.VisualStudio",
+                    "commandline": "cmd.exe /k dev.cmd",
+                    "icon": "ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png"
+                },
+                {
+                    "name": "My Azure profile",
+                    "guid": "{6239a42c-2222-49a3-80bd-e8fdd045185c}",
+                    "source": "Windows.Terminal.Azure",
+                    "connectionType": "{d9fcfdfa-a479-412c-83b7-c5640e61cd62}"
+                },
+                {
+                    "name": "Visual Studio profile without launch settings",
+                    "guid": "{6239a42c-3333-49a3-80bd-e8fdd045185c}",
+                    "source": "Windows.Terminal.VisualStudio"
+                },
+                {
+                    "name": "Hidden Visual Studio profile",
+                    "guid": "{6239a42c-4444-49a3-80bd-e8fdd045185c}",
+                    "source": "Windows.Terminal.VisualStudio",
+                    "commandline": "cmd.exe /k hidden.cmd",
+                    "hidden": true
+                },
+                {
+                    "name": "Windows shell",
+                    "guid": "{6239a42c-5555-49a3-80bd-e8fdd045185c}"
+                }
+            ]
+        })" };
+        const auto settings = createSettings(userSettings);
+        const auto serialized = Json::writeString(Json::StreamWriterBuilder{}, settings->ToJson());
+        for (const auto& loaded : { settings, createSettings(serialized) })
+        {
+            VERIFY_ARE_EQUAL(5u, loaded->AllProfiles().Size());
+            VERIFY_ARE_EQUAL(3u, loaded->ActiveProfiles().Size());
+
+            const auto visualStudio = loaded->FindProfile(Utils::GuidFromString(L"{6239a42c-1111-49a3-80bd-e8fdd045185c}"));
+            VERIFY_IS_NOT_NULL(visualStudio);
+            VERIFY_IS_FALSE(visualStudio.Orphaned());
+            VERIFY_ARE_EQUAL(L"Windows.Terminal.VisualStudio", visualStudio.Source());
+            VERIFY_ARE_EQUAL(L"cmd.exe /k dev.cmd", visualStudio.Commandline());
+            VERIFY_ARE_EQUAL(L"ms-appx:///ProfileIcons/{0caa0dad-35be-5f56-a8ff-afceeeaa6101}.png", visualStudio.Icon().Path());
+
+            const auto azure = loaded->FindProfile(Utils::GuidFromString(L"{6239a42c-2222-49a3-80bd-e8fdd045185c}"));
+            VERIFY_IS_NOT_NULL(azure);
+            VERIFY_IS_FALSE(azure.Orphaned());
+            VERIFY_ARE_EQUAL(L"Windows.Terminal.Azure", azure.Source());
+            VERIFY_ARE_EQUAL(Utils::GuidFromString(L"{d9fcfdfa-a479-412c-83b7-c5640e61cd62}"), azure.ConnectionType());
+
+            const auto incomplete = loaded->FindProfile(Utils::GuidFromString(L"{6239a42c-3333-49a3-80bd-e8fdd045185c}"));
+            VERIFY_IS_NOT_NULL(incomplete);
+            VERIFY_IS_TRUE(incomplete.Orphaned());
+
+            const auto hidden = loaded->FindProfile(Utils::GuidFromString(L"{6239a42c-4444-49a3-80bd-e8fdd045185c}"));
+            VERIFY_IS_NOT_NULL(hidden);
+            VERIFY_IS_TRUE(hidden.Hidden());
+        }
     }
 
     void DeserializationTests::FindMissingProfile()

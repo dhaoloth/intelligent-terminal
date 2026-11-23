@@ -1,16 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# PR #488: a profile can pin the command palette (delegate) agent to an exact
-# execution source, so `wta delegate` always gets an explicit `--delegate-source
-# host|wsl` and never re-routes itself. Both assertions are deterministic once a
-# runnable WSL distro is present.
-#
-# The C++ half (TerminalPage.cpp turning a profile's `commandPaletteAgent` into
-# those flags) is only reachable via non-injectable UI — Alt+Shift+B, the
-# Alt+Shift+/ palette, `?<prompt>` — so, exactly like Feature.Delegate, these
-# cases drive the delegate ENGINE directly with the flags it now always passes.
-# The oracle is the rendered pane, not wta-delegate.log: `Invoke-Wta` runs an
-# unpackaged copy of wta.exe, which logs to the bare fallback dir rather than the
-# packaged one `Assert-Log` reads.
+# PR #488 checks that an explicit delegate source controls where `wta delegate`
+# launches the configured agent. TerminalPage derives that source from the
+# profile's `commandPaletteAgent` setting when handling Alt+Shift+B.
+# These cases drive the CLI directly and assert on the error rendered by the
+# selected source. Both require a runnable WSL distro.
 
 BeforeDiscovery {
     $script:Ready = [bool](

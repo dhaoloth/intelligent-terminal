@@ -13,7 +13,18 @@
       Background="Transparent"
       mc:Ignorable="d">
 
+    <Grid x:Name="WorkspaceRoot"
+          FlowDirection="LeftToRight"
+          Background="Transparent">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="0" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid x:Name="SshHostsDock"
+              Grid.Column="0"
+              Background="{ThemeResource TabViewBackground}" />
     <Grid x:Name="Root"
+          Grid.Column="1"
           Background="Transparent">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -488,5 +499,6 @@
                            Text="" />
             </mux:TeachingTip.Content>
         </mux:TeachingTip>
+    </Grid>
     </Grid>
 </Page>

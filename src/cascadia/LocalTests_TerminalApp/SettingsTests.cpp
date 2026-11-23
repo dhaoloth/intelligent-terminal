@@ -2187,10 +2187,9 @@ namespace TerminalAppLocalTests
         const std::vector<Reg::BuiltinAgent> allowed{ Reg::BuiltinAcpAgents.begin(), Reg::BuiltinAcpAgents.end() };
         const auto candidates = BuildFreAgentCandidates(allowed, snapshot, L"codex", L"codex");
 
-        VERIFY_ARE_EQUAL(static_cast<size_t>(3), candidates.size());
-        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[0].id, L"copilot"));
-        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[1].id, L"claude"));
-        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[2].id, L"gemini"));
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), candidates.size());
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[0].id, L"claude"));
+        VERIFY_IS_TRUE(Reg::AgentIdEquals(candidates[1].id, L"gemini"));
     }
 
     void SettingsTests::TestFreAgentCandidatesFromUnknownProbe()
@@ -2200,15 +2199,13 @@ namespace TerminalAppLocalTests
 
         const std::vector<Reg::BuiltinAgent> allowed{ Reg::BuiltinAcpAgents.begin(), Reg::BuiltinAcpAgents.end() };
         const auto preferred = BuildFreAgentCandidates(allowed, std::nullopt, L"CoDeX", L"claude");
-        VERIFY_ARE_EQUAL(static_cast<size_t>(3), preferred.size());
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), preferred.size());
         VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[0].id, L"codex"));
         VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[1].id, L"claude"));
-        VERIFY_IS_TRUE(Reg::AgentIdEquals(preferred[2].id, L"copilot"));
 
         const std::vector<Reg::BuiltinAgent> geminiOnly{ Reg::BuiltinAcpAgents[3] };
         const auto policyFallback = BuildFreAgentCandidates(geminiOnly, std::nullopt, L"codex", L"custom:local");
-        VERIFY_ARE_EQUAL(static_cast<size_t>(1), policyFallback.size());
-        VERIFY_IS_TRUE(Reg::AgentIdEquals(policyFallback[0].id, L"gemini"));
+        VERIFY_IS_TRUE(policyFallback.empty());
 
         const std::vector<Reg::BuiltinAgent> none;
         VERIFY_IS_TRUE(BuildFreAgentCandidates(none, std::nullopt, L"copilot", L"copilot").empty());

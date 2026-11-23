@@ -594,7 +594,7 @@
 
             <!--  Agent (delegate / on-demand CLI)  -->
             <local:SettingContainer x:Name="DelegateAgent"
-                                    x:Uid="AIAgents_DelegateAgent"
+                                    x:Uid="AIAgents_InteractiveAgent"
                                     Style="{StaticResource AgentCliSettingContainerStyle}">
                 <!--  Vertical Margin — same rationale as the AcpAgent
                       container above: when a custom delegate agent is

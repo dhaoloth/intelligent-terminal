@@ -88,6 +88,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         SettingsLoader(const std::string_view& userJSON, const std::string_view& inboxJSON);
 
         void GenerateProfiles();
+        bool IsProfileSourceDisabled(std::wstring_view source) const;
         void GenerateExtensionPackagesFromProfileGenerators();
         void ApplyRuntimeInitialSettings();
         void MergeInboxIntoUserSettings();

@@ -1,0 +1,47 @@
+# State
+
+Task: Adapt Intelligent Terminal into a Windows SSH manager and agent workspace.
+Status: The permanent host tree, search, and first OpenSSH import workflow are implemented. Windows build and runtime checks are open.
+Scope: Windows terminal and SSH management, local agents in WSL, and agents on remote SSH hosts.
+
+## Verified
+
+- Intelligent Terminal already opens OpenSSH aliases in ordinary terminal tabs. Its dynamic profile generator reads `Host` entries followed by `HostName` from Windows OpenSSH configuration and adds an SSH folder to the new-tab menu. The profile editor exposes the launch command, while OpenSSH applies connection settings and handles interactive authentication.
+- The existing terminal tabs, sidebar, and profile settings are available to reuse. WTA also has detection and ACP launch for a selected WSL distribution. Detection currently targets built-in providers and needs to be checked against the four requested CLI agents.
+- Termora implements a saved host tree with nested folders, search, tags, import, and host actions. Its SSH editor covers authentication, proxies, jump hosts, tunnels, terminal and SFTP settings. Its connection flows include host-key verification, reconnect, key management, and graphical SFTP.
+- The working tree adds an SSH host tree docked on the left of the workspace, separate from tab selection. Host activation uses OpenSSH and ordinary terminal tabs. The pane exposes host creation, editing, and confirmed removal. The properties form keeps its draft separate from tree selection. OpenSSH prompts for passwords interactively.
+- Host search matches name, address, or group and retains each matching host's folder ancestry. The query persists across tab changes and catalog refreshes.
+- Explicit import previews literal aliases from the top-level Windows OpenSSH configuration files. Import writes host records atomically, skips aliases already in the catalog, and leaves existing OpenSSH settings authoritative for imported aliases. An offline OpenSSH configuration check confirmed the alias launch retains the configured port, user, jump host, identity, and host-key policy.
+- The working tree stops creating new Azure Cloud Shell and Visual Studio profiles, retains compatible saved profiles, removes automatic Copilot onboarding and default selection, and removes the command palette's `?` delegation path and shortcut.
+- WSL checks covered source wiring, project and resource XML, and diff whitespace. Offline OpenSSH configuration checks covered interactive password and key modes, IPv6, key paths with spaces, and host-key verification settings.
+
+## Decisions
+
+- WSL and remote SSH hosts are equally important. Preserve ordinary Windows, WSL, and SSH terminal tabs. Local agents run in WSL distributions. Remote agents run on the selected SSH host.
+- Use Termora as the reference for full SSH management in the UI, including the host tree and editable connection properties. Reuse matching Intelligent Terminal behavior, and choose the SSH backend based on the gaps. Reusing Termora source is optional.
+- Keep the saved host tree docked on the left of the terminal workspace so it remains visible while switching tabs. Put host management actions on that pane. Activating a host opens a separate SSH terminal tab.
+- Discover installed Codex CLI, Claude Code, Hermes Agent, and Qwen Code under each configured SSH host or WSL distribution. Selecting the host or distribution opens a terminal. Selecting an agent opens its native TUI in a separate application tab.
+- Follow each agent's native session behavior. Closing a tab and stopping a task are separate actions. Show active sessions and their location in a dedicated panel. Show token usage and cost when the agent exposes them.
+- Subagent inspection is optional per agent. When child sessions and their output are available, list active subagents in a tab inside the parent agent view. Selecting a subagent replaces the main view in place, Back returns to the main view, and completed subagents leave the active list. Show an unavailable state when the current agent cannot expose child sessions and their output.
+- Preserve Intelligent Terminal's terminal experience and support carrying over the user's Windows Terminal font, colors, highlighting, and other appearance preferences. Use ZCode as a reference for provider and appearance settings.
+- Remove unused automatic profile creation and bundled defaults such as Azure Cloud Shell and Visual Studio profiles and automatic Copilot setup. Remove the terminal's `?` delegation shortcut and its error analysis features, including `/fix`. Keep the agents' native capabilities available in their TUIs.
+
+## Open
+
+- Validate the Windows build, both tab layouts, narrow windows, keyboard interaction, host persistence, terminal launch and authentication, and legacy profile and onboarding migrations.
+- Extend host management with broader import support, SSH agent and key management, proxies, jump hosts, tunnels, reconnect, and graphical SFTP. The first OpenSSH import reads literal `Host` aliases in the top-level files. Included files and wildcard patterns are open.
+- Add discovery and native TUI launch for the four supported CLIs in WSL and over SSH. Add the shared session panel, provider-supported usage and subagent views, and unavailable states.
+- Complete appearance import and removal of terminal error analysis and `/fix`.
+
+## Evidence
+
+- Intelligent Terminal baseline: `0fe42594d` on `main`.
+- Termora reference checkout: `../termora` at `f0acbb4` on `2.x`.
+- Current implementation: `src/cascadia/TerminalApp/TerminalPage.SshHosts.cpp` and `src/cascadia/TerminalApp/SshHostStore.cpp`.
+- Technical concept: `doc/specs/ssh-agent-workspace.md`, based on Astra Medium's independent source review.
+- Intelligent Terminal: `src/cascadia/TerminalSettingsModel/SshHostGenerator.cpp`, `src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp`, `src/cascadia/TerminalSettingsEditor/Profiles_Base.xaml`, `src/cascadia/TerminalApp/TabStrip.xaml`, and `tools/wta/src/agent_check.rs`.
+- Termora: `../termora/src/main/kotlin/app/termora/tree/NewHostTree.kt`, `../termora/src/main/kotlin/app/termora/plugin/internal/ssh/SSHHostOptionsPane.kt`, and `../termora/src/main/kotlin/app/termora/transfer/internal/sftp/SFTPTransferProtocolProvider.kt`.
+
+## Next
+
+- Run Windows build and unit tests using the fork's PR CI workflow. Exercise the host workflow in an authorized Windows test environment. Integrate WSL and SSH agent discovery and terminal launch into the connection tree using the supported CLI commands.

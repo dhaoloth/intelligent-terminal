@@ -365,36 +365,6 @@ function Invoke-TelemetryOffer {
     }
 }
 
-function Invoke-TelemetryPalette {
-    # The temporary custom delegate only exits; it cannot invoke a real model.
-    Set-WtSettings -App $script:app -Settings @{
-        delegateAgent = 'custom:cmd'; delegateCustomCommand = 'cmd.exe /d /c exit 0'
-    } | Out-Null
-    Start-Sleep -Seconds 2
-    Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'foreground agent palette is visible' -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
-    Set-UiValue -App $script:app -Selector '_searchBox' -Value '?telemetry abandoned' | Out-Null
-    Set-UiValue -App $script:app -Selector '_searchBox' -Value '?telemetry abandoned edited' | Out-Null
-    $hideUtc = [DateTime]::UtcNow.ToString('o')
-    Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'same shortcut hides rather than reenters the palette' -Condition { -not (Test-CommandPaletteOpen -App $script:app) } | Out-Null
-    $reopenUtc = [DateTime]::UtcNow.ToString('o')
-    Send-WtWindowKey -App $script:app -Vk 0xBF -Alt -Shift -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'foreground palette reopens' -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
-    Set-UiValue -App $script:app -Selector '_searchBox' -Value '?telemetry harmless submission' | Out-Null
-    $submitUtc = [DateTime]::UtcNow.ToString('o')
-    Send-WtWindowKey -App $script:app -Vk 0x0D -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'submission closes the palette' -Condition { -not (Test-CommandPaletteOpen -App $script:app) } | Out-Null
-    Start-Sleep -Seconds 2
-    $backgroundUtc = [DateTime]::UtcNow.ToString('o')
-    Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'normal palette opens for the background negative control' -Condition { Test-CommandPaletteOpen -App $script:app } | Out-Null
-    Set-UiValue -App $script:app -Selector '_searchBox' -Value '&telemetry background abandoned' | Out-Null
-    Send-WtWindowKey -App $script:app -Vk 0x1B -Repeat 2 -RequireForeground | Out-Null
-    Wait-Until -TimeoutSec 10 -Because 'background mode is abandoned without submission' -Condition { -not (Test-CommandPaletteOpen -App $script:app) } | Out-Null
-    @{ HideUtc = $hideUtc; ReopenUtc = $reopenUtc; SubmitUtc = $submitUtc; BackgroundUtc = $backgroundUtc; ExpectedEntries = 2; ExpectedSubmissions = 1 }
-}
-
 function Invoke-TelemetryProviderChanges {
     $changes = @(
         @{ Key = 'acpAgent'; Value = 'custom:pwsh'; Role = 'primary'; From = 'custom'; To = 'custom' }

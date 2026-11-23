@@ -382,7 +382,7 @@ namespace winrt::TerminalApp::implementation
         });
         auto items = AgentComboBox().Items();
         items.Clear();
-        int32_t selectedIndex = 0;
+        int32_t selectedIndex = -1;
         int32_t idx = 0;
 
         for (const auto& a : candidates)
@@ -423,14 +423,7 @@ namespace winrt::TerminalApp::implementation
             idx++;
         }
 
-        if (items.Size() > 0)
-        {
-            AgentComboBox().SelectedIndex(selectedIndex);
-        }
-        else
-        {
-            AgentComboBox().SelectedIndex(-1);
-        }
+        AgentComboBox().SelectedIndex(selectedIndex);
         _UpdateAutomaticApprovalState();
         _UpdateAgentProbeWarning();
     }
@@ -498,7 +491,6 @@ namespace winrt::TerminalApp::implementation
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
-        _autoInstallCopilotAfterCompletion = false;
         _welcomeCardCornerRadius.reset();
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
@@ -1666,7 +1658,6 @@ namespace winrt::TerminalApp::implementation
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
     {
         auto weak = get_weak();
-        _autoInstallCopilotAfterCompletion = false;
         // Capture the dispatcher while we're definitely on the UI thread.
         // After any subsequent `co_await` that resumes on a background
         // thread (e.g. _WingetInstallAsync, _InstallHooksAsync), calling
@@ -1748,8 +1739,7 @@ namespace winrt::TerminalApp::implementation
         _BeginProgressStep(ProgressStep::Agent);
 
         // 3. Install launch prerequisites that must exist before the first
-        // terminal is created. Copilot installation is intentionally deferred
-        // to WTA Setup so a missing agent cannot keep the user in FRE.
+        // terminal is created.
         const bool needsNode = ::Microsoft::Terminal::AgentAvailability::NeedsFreNodeBootstrap(
             _hostAgentSnapshot,
             std::wstring_view{ agentId });
@@ -2091,7 +2081,6 @@ namespace winrt::TerminalApp::implementation
             if (!self) co_return;
 
             _agentPaneLog("[FRE] Completed — raising Completed event");
-            _autoInstallCopilotAfterCompletion = agentId == L"copilot";
             // Restore the editable state before raising Completed so that
             // if anything keeps the overlay alive a moment longer, it
             // doesn't appear stuck in the "saving" visual.
@@ -2111,7 +2100,6 @@ namespace winrt::TerminalApp::implementation
     void FreOverlay::_OnCloseButtonClick(const IInspectable& /*sender*/,
                                          const RoutedEventArgs& /*args*/)
     {
-        _autoInstallCopilotAfterCompletion = false;
         Completed.raise(*this, nullptr);
     }
 

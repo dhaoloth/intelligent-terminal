@@ -533,9 +533,6 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C136` `[UT~]` `[E2E]` **Delegate cwd is correct:** The delegate starts with the current pane's working directory.
 - [ ] `C137` `[UT✓]` `[E2E]` **Delegate provider is correct:** The launched delegate uses the configured delegate agent, not the agent-pane provider unless they are intentionally the same. _(UT: `EffectiveDelegateAgent`.)_
 - [x] `C138` `[UT✓]` `[E2E]` **Delegate model is correct:** The launched delegate uses the configured delegate model. _(UT: `coordinator::delegate_launch_commandline_appends_startup_prompt_and_model` + `delegate_runtime_inherits_model_from_agent_command` — the delegate command line carries the configured `--model`.)_
-- [ ] `C139` `[UT✓]` `[E2E]` **`Alt+Shift+/` opens agent delegation palette:** Shortcut opens command palette in agent-delegation mode. _(UT: `DefaultAgentKeybindings` binding; palette E2E.)_
-- [ ] `C140` `[E2E]` **Command palette prompt launches delegate:** Typing a request and pressing Enter creates a delegate task.
-- [ ] `C141` `[E2E]` **Command palette cancel is safe:** Esc/cancel closes the palette without launching a delegate.
 - [ ] `C142` `[E2E]` `[MANUAL]` **Delegate with Copilot works:** Copilot delegate task starts and responds.
 - [ ] `C143` `[E2E]` `[MANUAL]` **Delegate with non-Copilot agents works:** Claude/Codex/Gemini delegate tasks start and respond where supported by delegate mode.
 - [ ] `C144` `[UT~]` `[E2E]` **Delegate errors are actionable:** Missing CLI/auth errors are clear.
@@ -561,7 +558,6 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C153` `[UT✓]` `[E2E]` **Add custom delegate agent:** In Settings, add a delegate custom command such as `qwen.cmd`. _(UT: `DeriveCustomAgentId` (AIAgentsViewModel) derives the `custom:<id>` from the entered command; E2E-adjacent: `Feature.CustomDelegate` runs a configured custom delegate command.)_
 - [x] `C154` `[UT✓]` **Save custom delegate agent:** Saving persists the delegate custom command. _(UT: round-trip.)_
 - [ ] `C155` `[UT✓]` `[E2E]` **`Alt+Shift+B` uses custom delegate:** Background delegate shortcut launches the custom command. _(UT: `DefaultAgentKeybindings` binding + custom `EffectiveDelegateAgent` resolution.)_
-- [ ] `C156` `[UT✓]` `[E2E]` **`Alt+Shift+/` uses custom delegate:** Agent-delegation command palette launches the custom command. _(UT: `DefaultAgentKeybindings` + `AgentActionsParse` delegation mode.)_
 - [ ] `C157` `[UT~]` `[E2E]` **Custom delegate cwd is correct:** Custom delegate starts in the source pane's cwd.
 - [ ] `C158` `[UT~]` `[E2E]` **Custom delegate errors are clear:** Bad command or auth/setup failure is actionable.
 

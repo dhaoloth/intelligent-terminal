@@ -65,6 +65,7 @@
     <ClInclude Include="WslDistroGenerator.h">
       <Filter>profileGeneration</Filter>
     </ClInclude>
+    <ClInclude Include="..\inc\OpenSshExecutable.h" />
     <ClInclude Include="SshHostGenerator.h">
       <Filter>profileGeneration</Filter>
     </ClInclude>

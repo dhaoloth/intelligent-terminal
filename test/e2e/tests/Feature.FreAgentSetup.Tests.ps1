@@ -37,12 +37,14 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
     It 'Copilot preinstalled: the FRE agent dropdown shows Copilot as installed' -Skip:(-not $script:CopilotReady) {
-        # The AgentComboBox renders its selected item text in the tree even while collapsed; with
-        # the Copilot CLI installed it must carry the localized installed suffix.
-        $shown = Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
-            (Get-UiTree -App $script:app -Depth 16) -match ("(?i)copilot[^\r\n]*" + $script:InstalledSfx)
+        Invoke-UiElement -App $script:app -Selector 'AgentComboBox' -TimeoutSec 10 | Out-Null
+        try {
+            $shown = Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
+                (Get-UiTree -App $script:app -Depth 18) -match ("(?i)copilot[^\r\n]*" + $script:InstalledSfx)
+            }
+            $shown | Should -BeTrue -Because 'with the Copilot CLI installed, the FRE agent picker must list it as installed'
         }
-        $shown | Should -BeTrue -Because 'with the Copilot CLI installed, the FRE agent picker must list it as installed'
+        finally { Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null }
     }
 
     It 'Setup hints are not rendered inside setting cards' {

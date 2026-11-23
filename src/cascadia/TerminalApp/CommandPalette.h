@@ -6,7 +6,6 @@
 #include "FilteredCommand.h"
 #include "CommandPalette.g.h"
 #include "AppCommandlineArgs.h"
-#include "CommandPaletteTelemetry.h"
 
 #include <til/hash.h>
 
@@ -24,7 +23,6 @@ namespace winrt::TerminalApp::implementation
         TabSearchMode,
         TabSwitchMode,
         CommandlineMode,
-        AgentForegroundMode,
         AgentBackgroundMode,
     };
 
@@ -56,7 +54,6 @@ namespace winrt::TerminalApp::implementation
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> CommandLineExecutionRequested;
         til::typed_event<winrt::TerminalApp::CommandPalette, Microsoft::Terminal::Settings::Model::Command> DispatchCommandRequested;
         til::typed_event<Windows::Foundation::IInspectable, Microsoft::Terminal::Settings::Model::Command> PreviewAction;
-        til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentForegroundPromptRequested;
         til::typed_event<winrt::TerminalApp::CommandPalette, winrt::hstring> AgentBackgroundTaskRequested;
 
         WINRT_OBSERVABLE_PROPERTY(winrt::hstring, NoMatchesText, PropertyChanged.raise);
@@ -130,9 +127,6 @@ namespace winrt::TerminalApp::implementation
 
         CommandPaletteMode _currentMode;
         void _switchToMode(CommandPaletteMode mode);
-        void _recordAgentPromptEntry();
-        ::TerminalApp::CommandPaletteTelemetry::AgentPromptEntry _agentPromptEntry;
-        winrt::hstring _agentPromptEntryId;
 
         std::wstring _getTrimmedInput();
         void _evaluatePrefix();
@@ -152,7 +146,7 @@ namespace winrt::TerminalApp::implementation
 
         void _dispatchCommand(const winrt::TerminalApp::FilteredCommand& command);
         void _dispatchCommandline(const winrt::TerminalApp::FilteredCommand& command);
-        void _dispatchAgentPrompt();
+        void _dispatchBackgroundAgentTask();
         void _switchToTab(const winrt::TerminalApp::FilteredCommand& command);
         static std::optional<winrt::TerminalApp::FilteredCommand> _buildCommandLineCommand(const winrt::hstring& commandLine);
 

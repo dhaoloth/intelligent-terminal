@@ -78,11 +78,11 @@ Author(s):
     X(bool, AllowHeadless, "compatibility.allowHeadless", false)                                                                                                                                      \
     X(hstring, SearchWebDefaultQueryUrl, "searchWebDefaultQueryUrl", L"https://www.bing.com/search?q=%22%s%22")                                                                                       \
     X(bool, ShowTabsFullscreen, "showTabsFullscreen", false)                                                                                                                                            \
-    X(hstring, AcpAgent, "acpAgent", L"copilot")                                                                                                                                                        \
+    X(hstring, AcpAgent, "acpAgent", L"")                                                                                                                                                               \
     X(hstring, AcpModel, "acpModel", L"")                                                                                                                                                               \
     X(hstring, CustomModelSelection, "customModelSelection", L"")                                                                                                                                       \
     X(winrt::Windows::Foundation::Collections::IVector<Model::CustomModelProvider>, CustomModelProviders, "customModelProviders", winrt::single_threaded_vector<Model::CustomModelProvider>())             \
-    X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
+    X(hstring, DelegateAgent, "delegateAgent", L"")                                                                                                                                                     \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
     X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \

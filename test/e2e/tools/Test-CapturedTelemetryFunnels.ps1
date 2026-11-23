@@ -67,9 +67,9 @@ foreach ($decision in @('Run', 'Insert', 'Reject')) {
 $runs = @(Select-Phase $FunnelCapture $funnel offer-Run ErrorFixRunStarted)
 $results = @(Select-Phase $FunnelCapture $funnel offer-Run ErrorFixRunResult)
 @($results | Where-Object { $_.Fields.Outcome -ne 'unobservable' }) | Should -HaveCount 0
-$entries = @(Select-Phase $FunnelCapture $funnel palette CommandPaletteAgentPromptEntered)
-$submissions = @(Select-Phase $FunnelCapture $funnel palette CommandPaletteDispatchedAgentPrompt |
-    Where-Object { $_.Fields.IsBackgroundMode -in @('false', '0') })
+# Historical captures contain a foreground palette funnel that current runs omit.
+$funnelPhases = Get-Content (Join-Path $FunnelCapture 'phases.json') -Raw | ConvertFrom-Json -AsHashtable
+$hasForegroundPalettePhase = $funnelPhases.Keys -contains 'palette'
 $marked = @(foreach ($phase in @('pin-first', 'pin-second-hidden-first', 'repin')) {
     Select-Phase $SidebarCapture $sidebar $phase KeepRunningMarked
 })
@@ -92,13 +92,21 @@ $metrics = @(
     Measure-Join 'Presented offers -> accepted Run' $offers $accepts @('OfferId', 'Source')
     Measure-Join 'Accepted offers -> executor Run dispatch' $accepts $runs @('OfferId')
     Measure-Join 'Run starts -> observed unknown execution result' $runs $results @('OfferId', 'RunId')
-    Measure-Join 'Foreground palette visits -> submissions' $entries $submissions @('EntryId')
+    if ($hasForegroundPalettePhase) {
+        $entries = @(Select-Phase $FunnelCapture $funnel palette CommandPaletteAgentPromptEntered)
+        $submissions = @(Select-Phase $FunnelCapture $funnel palette CommandPaletteDispatchedAgentPrompt |
+            Where-Object { $_.Fields.IsBackgroundMode -in @('false', '0') })
+        Measure-Join 'Foreground palette visits -> submissions' $entries $submissions @('EntryId')
+    }
     Measure-Join 'Keep opt-ins -> observed retained close (not close success rate)' $marked $detached @('KeepId')
     Measure-Join 'Retained flows -> successful live restore' $detached $restored @('KeepId')
     Measure-Join 'Restore attempts -> live results' $started $restored @('AttemptId')
     Measure-Join 'Eligible restored attempts -> user prompt' $eligible $continued @('KeepId', 'AttemptId')
 )
-$expected = @(@(2, 2), @(2, 1), @(3, 3), @(3, 1), @(1, 1), @(1, 1), @(2, 1), @(3, 1), @(1, 1), @(1, 1), @(1, 1))
+$expected = @(@(2, 2), @(2, 1), @(3, 3), @(3, 1), @(1, 1), @(1, 1))
+if ($hasForegroundPalettePhase) { $expected += ,@(2, 1) }
+$expected += @(@(3, 1), @(1, 1), @(1, 1), @(1, 1))
+$metrics | Should -HaveCount $expected.Count
 for ($i = 0; $i -lt $metrics.Count; $i++) {
     $metrics[$i].Denominator | Should -Be $expected[$i][0] -Because $metrics[$i].Funnel
     $metrics[$i].Numerator | Should -Be $expected[$i][1] -Because $metrics[$i].Funnel

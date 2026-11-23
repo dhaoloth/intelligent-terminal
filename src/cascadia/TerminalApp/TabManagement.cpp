@@ -568,6 +568,7 @@ namespace winrt::TerminalApp::implementation
     // - Handle changes in tab layout.
     void TerminalPage::_UpdateTabView()
     {
+        _UpdateSshHostsDockLayout();
         if (!_freChromeVisible)
         {
             _tabRow.Visibility(Visibility::Collapsed);

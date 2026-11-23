@@ -12,6 +12,7 @@
 #include "resource.h"
 
 #include "AzureCloudShellGenerator.h"
+#include "LegacyProfileGeneratorNamespaces.h"
 #include "PowershellCoreProfileGenerator.h"
 #include "VisualStudioGenerator.h"
 #include "WslDistroGenerator.h"
@@ -69,6 +70,9 @@ static constexpr std::wstring_view AppExtensionHostName{ L"com.microsoft.windows
 // make sure this matches defaults.json.
 static constexpr winrt::guid DEFAULT_WINDOWS_POWERSHELL_GUID{ 0x61c54bbd, 0xc2c6, 0x5271, { 0x96, 0xe7, 0x00, 0x9a, 0x87, 0xff, 0x44, 0xbf } };
 static constexpr winrt::guid DEFAULT_COMMAND_PROMPT_GUID{ 0x0caa0dad, 0x35be, 0x5f56, { 0xa8, 0xff, 0xaf, 0xce, 0xee, 0xaa, 0x61, 0x01 } };
+
+// Fixed profile identity used by settings saved before dynamic profiles had a source.
+static constexpr winrt::guid LEGACY_AZURE_CLOUD_SHELL_GUID{ 0xb453ae62, 0x4e3d, 0x5e58, { 0xb9, 0x89, 0x0a, 0x99, 0x8e, 0xc4, 0x41, 0xb8 } };
 
 // Function Description:
 // - Extracting the value from an async task (like talking to the app catalog) when we are on the
@@ -212,12 +216,17 @@ Json::StreamWriterBuilder SettingsLoader::_getJsonStyledWriter()
     return styledWriter;
 }
 
+bool SettingsLoader::IsProfileSourceDisabled(const std::wstring_view source) const
+{
+    return _ignoredNamespaces.contains(source);
+}
+
 // Generate dynamic profiles and add them to the list of "inbox" profiles
 // (meaning profiles specified by the application rather by the user).
 void SettingsLoader::GenerateProfiles()
 {
     auto generateProfiles = [&](const IDynamicProfileGenerator& generator) {
-        if (!_ignoredNamespaces.contains(generator.GetNamespace()))
+        if (!IsProfileSourceDisabled(generator.GetNamespace()))
         {
             const auto oldProfileCount = inboxSettings.profiles.size();
             _executeGenerator(generator, inboxSettings.profiles);
@@ -226,12 +235,37 @@ void SettingsLoader::GenerateProfiles()
         return false;
     };
 
+    // Retired generators supply inherited settings only for profiles already saved by the user.
+    const auto restoreProfileParents = [&](const IDynamicProfileGenerator& generator) {
+        const auto source = generator.GetNamespace();
+        const auto hasSavedSource = [&](const auto& profile) {
+            const auto savedSource = profile->Source();
+            return savedSource == source ||
+                   (source == AzureGeneratorNamespace && savedSource.empty() && profile->Guid() == LEGACY_AZURE_CLOUD_SHELL_GUID);
+        };
+        if (IsProfileSourceDisabled(source) || !std::ranges::any_of(userSettings.profiles, hasSavedSource))
+        {
+            return;
+        }
+
+        std::vector<winrt::com_ptr<Profile>> generatedProfiles;
+        _executeGenerator(generator, generatedProfiles);
+        for (auto& profile : generatedProfiles)
+        {
+            const auto saved = userSettings.profilesByGuid.find(profile->Guid());
+            if (saved != userSettings.profilesByGuid.end() && hasSavedSource(saved->second))
+            {
+                inboxSettings.profiles.emplace_back(std::move(profile));
+            }
+        }
+    };
+    restoreProfileParents(AzureCloudShellGenerator{});
+    restoreProfileParents(VisualStudioGenerator{});
+
     // Generate profiles for each generator and add them to the inbox settings.
     // Be sure to update the same list below.
     generateProfiles(PowershellCoreProfileGenerator{});
     generateProfiles(WslDistroGenerator{});
-    generateProfiles(AzureCloudShellGenerator{});
-    generateProfiles(VisualStudioGenerator{});
     generateProfiles(AgentProfileGenerator{ userSettings.globals.get() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
@@ -273,8 +307,6 @@ void SettingsLoader::GenerateExtensionPackagesFromProfileGenerators()
     // Be sure to update the same list above.
     generateExtensionPackages(PowershellCoreProfileGenerator{});
     generateExtensionPackages(WslDistroGenerator{});
-    generateExtensionPackages(AzureCloudShellGenerator{});
-    generateExtensionPackages(VisualStudioGenerator{});
     generateExtensionPackages(AgentProfileGenerator{ userSettings.globals.get() });
     if constexpr (Feature_DynamicSSHProfiles::IsEnabled())
     {
@@ -713,7 +745,8 @@ bool SettingsLoader::FixupUserSettings()
             }
         }
 
-        if (profile->HasIcon() && profile->HasSource() && profile->Source() == VisualStudioGenerator::Namespace)
+        if (profile->HasIcon() && profile->HasSource() && profile->Source() == VisualStudioGenerator::Namespace &&
+            std::ranges::any_of(profile->Parents(), [](const auto& parent) { return parent->Source() == VisualStudioGenerator::Namespace; }))
         {
             for (auto&& icon : iconsToClearFromVisualStudioProfiles)
             {
@@ -1522,15 +1555,18 @@ CascadiaSettings::CascadiaSettings(SettingsLoader&& loader) :
     for (const auto& profile : loader.userSettings.profiles)
     {
         profile->SettingsOwner = winrt::make_weak<Model::GlobalAppSettings>(*loader.userSettings.globals);
-        // If a generator stops producing a certain profile (e.g. WSL or PowerShell were removed) or
-        // a profile from a fragment doesn't exist anymore, we should also stop including the
-        // matching user's profile in _allProfiles (since they aren't functional anyways).
+        // A profile whose generator or fragment no longer supplies its launch settings remains
+        // in the saved settings but is usually unavailable to launch.
         //
         // A user profile has a valid, dynamic parent if it has a parent with identical source.
         if (const auto source = profile->Source(); !source.empty())
         {
             const auto& parents = profile->Parents();
-            if (std::none_of(parents.begin(), parents.end(), [&](const auto& parent) { return parent->Source() == source; }))
+            const auto hasDynamicParent = std::ranges::any_of(parents, [&](const auto& parent) { return parent->Source() == source; });
+            const auto retiredSource = source == AzureGeneratorNamespace || source == VisualStudioGenerator::Namespace;
+            const auto hasOwnLaunchSettings = (profile->HasCommandline() && !profile->Commandline().empty()) ||
+                                              (profile->HasConnectionType() && profile->ConnectionType() != winrt::guid{});
+            if (!hasDynamicParent && !(retiredSource && hasOwnLaunchSettings && !loader.IsProfileSourceDisabled(source)))
             {
                 profile->Orphaned(true);
             }

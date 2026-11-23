@@ -26,6 +26,7 @@
 #include "Toast.h"
 #include "SharedWta.h"
 #include "ProgramStatusPresentation.h"
+#include "SshHostStore.h"
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -166,6 +167,7 @@ namespace winrt::TerminalApp::implementation
     struct TerminalPage : TerminalPageT<TerminalPage>
     {
     public:
+        static constexpr double SshHostsDockWidth{ 260.0 };
         TerminalPage(TerminalApp::WindowProperties properties, const TerminalApp::ContentManager& manager);
         ~TerminalPage();
 
@@ -700,9 +702,7 @@ namespace winrt::TerminalApp::implementation
         uint32_t _startupActionReplayDepth{ 0 };
         bool _startupStructureSettleQueued{ false };
         bool _pendingFreEnsureAgentPaneVisible{ false };
-        bool _pendingFreAutoInstallCopilot{ false };
         bool _freChromeVisible{ true };
-        winrt::hstring _freAutoInstallTargetTabId;
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
         // rather than re-scanning every tab in the window — is what keeps an
@@ -841,11 +841,9 @@ namespace winrt::TerminalApp::implementation
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
         // (first acquire) and `_ReconcileAgentSettings` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
-        std::vector<std::wstring> _BuildSharedWtaExtraArgs(const std::function<winrt::hstring()>& detectFallback = {});
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
         std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
         bool _EnsureSharedWtaService();
-        safe_void_coroutine _StartSharedWtaServiceWithFallback();
-        bool _sharedWtaFallbackProbeInFlight{ false };
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
@@ -961,6 +959,10 @@ namespace winrt::TerminalApp::implementation
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
 
         void _CreateNewTabFlyout();
+        void _InitializeSshHosts();
+        void _UpdateSshHostsDockLayout();
+        void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host);
+        safe_void_coroutine _ShowSshHosts(std::optional<::Microsoft::Terminal::OpenSsh::SavedHost> host = std::nullopt);
         std::vector<winrt::Windows::UI::Xaml::Controls::MenuFlyoutItemBase> _CreateNewTabFlyoutItems(winrt::Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::NewTabMenuEntry> entries);
         winrt::Windows::UI::Xaml::Controls::IconElement _CreateNewTabFlyoutIcon(const winrt::hstring& icon);
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutProfile(const Microsoft::Terminal::Settings::Model::Profile profile, int profileIndex, const winrt::hstring& iconPathOverride);
@@ -1532,16 +1534,13 @@ namespace winrt::TerminalApp::implementation
         void _OnDispatchCommandRequested(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::Command& command);
         void _OnCommandLineExecutionRequested(const IInspectable& sender, const winrt::hstring& commandLine);
         void _OnSwitchToTabRequested(const IInspectable& sender, const winrt::TerminalApp::Tab& tab);
-        void _OnAgentForegroundPromptRequested(const IInspectable& sender, const winrt::hstring& prompt);
         void _OnAgentBackgroundTaskRequested(const IInspectable& sender, const winrt::hstring& prompt);
 
         // Agent pane helpers
         winrt::hstring _DetectAgentCli() const;
         winrt::hstring _DetectWtaPath() const;
         std::optional<uint32_t> _FindSourceOfAgentPaneId(const std::shared_ptr<Pane>& root);
-        void _DelegatePromptToAgent(const winrt::hstring& prompt);
         void _OpenBackgroundAgentTab();
-        void _LaunchDelegate(const std::optional<winrt::hstring>& prompt);
 
         // Note (Phase 5): the per-pane wta-process watch + Job Object members
         // and their setup/teardown methods were removed when the legacy

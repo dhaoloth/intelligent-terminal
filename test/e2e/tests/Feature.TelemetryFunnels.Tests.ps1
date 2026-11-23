@@ -186,7 +186,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             Set-TelemetryPolicy -Transaction $script:policyTransaction -Name AllowAutoFix -Value $null
             Invoke-TelemetryPhase -Name second-window -Action { Invoke-TelemetrySecondWindow }
             @(Get-WtWindows -App $script:app) | Should -HaveCount 1 -Because 'later settings changes must only reach the retained primary window'
-            Invoke-TelemetryPhase -Name palette -Action { Invoke-TelemetryPalette }
             Invoke-TelemetryPhase -Name provider-changes -Action { Invoke-TelemetryProviderChanges }
             foreach ($allowed in @($false, $true)) {
                 Invoke-TelemetryPhase -Name "cold-autofix-policy-$allowed" -Action {
@@ -271,7 +270,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                 'AgentSlashCommandUsed', 'SlashCommandInvoked', 'SessionBecameInteractive', 'UserInteract',
                 'ConnectionCreated', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseComplete',
                 'ErrorDetected', 'ErrorFixOffered', 'ErrorFixAccepted', 'ErrorFixRunStarted', 'ErrorFixRunResult',
-                'CommandPaletteAgentPromptEntered', 'CommandPaletteDispatchedAgentPrompt',
                 'AgentProviderChanged', 'JsonSettingsChanged', 'AgentSessionStarted'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         @($script:ownedPids) | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:root 'owned-processes.json')
@@ -537,26 +535,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         foreach ($phase in @('offer-Insert', 'offer-Reject', 'conversation')) {
             @(Get-TelemetryPhaseEvents -Phase $phase | Where-Object Name -in @('ErrorFixRunStarted', 'ErrorFixRunResult')) | Should -HaveCount 0
         }
-    }
-
-    It 'Visible foreground palette entry is distinct from hiding and submission' {
-        $entries = @(Get-TelemetryPhaseEvents -Phase palette -Name CommandPaletteAgentPromptEntered)
-        $submissions = @(Get-TelemetryPhaseEvents -Phase palette -Name CommandPaletteDispatchedAgentPrompt)
-        $entries | Should -HaveCount 2
-        $submissions | Should -HaveCount 1
-        $phase = $script:phases.palette.Data
-        $first = ([DateTimeOffset]$entries[0].Timestamp).UtcDateTime.Add($script:traceClockCorrection)
-        $second = ([DateTimeOffset]$entries[1].Timestamp).UtcDateTime.Add($script:traceClockCorrection)
-        $first | Should -BeLessThan ([DateTimeOffset]$phase.HideUtc).UtcDateTime
-        $second | Should -BeGreaterOrEqual ([DateTimeOffset]$phase.ReopenUtc).UtcDateTime
-        $second | Should -BeLessThan ([DateTimeOffset]$phase.SubmitUtc).UtcDateTime
-        $submissions[0].Fields.IsBackgroundMode | Should -BeIn @('false', '0')
-        @($entries.Fields.EntryId | Select-Object -Unique) | Should -HaveCount 2
-        foreach ($entry in $entries) {
-            [guid]::Parse($entry.Fields.EntryId) | Should -Not -Be ([guid]::Empty)
-            $entry.Types.EntryId | Should -Match 'UnicodeString$'
-        }
-        $submissions[0].Fields.EntryId | Should -Be $entries[1].Fields.EntryId
     }
 
     It 'Provider changes expose bounded roles and transitions without unchanged reloads' {

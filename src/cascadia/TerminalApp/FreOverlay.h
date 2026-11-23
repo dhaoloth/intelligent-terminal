@@ -34,10 +34,6 @@ namespace winrt::TerminalApp::implementation
         // Event — sender must be the WinRT projected type.
         til::typed_event<winrt::TerminalApp::FreOverlay, winrt::Windows::Foundation::IInspectable> Completed;
 
-        // True only after the full Save flow succeeds with Copilot selected.
-        // TerminalPage consumes this as a one-shot WTA startup hint.
-        bool ShouldAutoInstallCopilotAfterCompletion() const noexcept { return _autoInstallCopilotAfterCompletion; }
-
         // XAML event handlers — must be public for generated code access.
         void _OnNextButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
@@ -60,7 +56,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<::Microsoft::Terminal::AgentAvailability::HostAgentSnapshot> _hostAgentSnapshot;
         bool _updatingAgentComboBox{ false };
         bool _agentSelectionExplicitlyChanged{ false };
-        bool _autoInstallCopilotAfterCompletion{ false };
         std::optional<double> _welcomeCardCornerRadius;
 
         void _UpdateWelcomeLayout(const winrt::Windows::Foundation::Size& viewport);

@@ -41,7 +41,7 @@
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
-Intelligent Terminal works with any [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLI. All you need is to install your preferred agent CLI on your PC. If you don't have a preferred agent, we'll get you setup with [GitHub Copilot CLI](https://github.com/features/copilot/cli/).
+Intelligent Terminal works with [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs. You can install and select your preferred agent to use the agent pane.
 
 Intelligent Terminal takes all the features you love in Windows Terminal such as:  tabs, profiles, themes, settings, shells, and keyboard shortcuts, which all work the way you expect.
 
@@ -52,7 +52,7 @@ Read the [announcement blog post](https://devblogs.microsoft.com/commandline/ann
 ## Installing and running Intelligent Terminal
 
 > [!NOTE]
-> Intelligent Terminal requires Windows 10 2004 (19041) or later and a supported agent CLI. [GitHub Copilot](https://github.com/features/copilot/cli/) is the default. Account, subscription, and API-key requirements depend on your agent and model provider. Local models are also supported through compatible agents.
+> Intelligent Terminal requires Windows 10 2004 (19041) or later. The agent pane requires a supported agent CLI. Account, subscription, and API-key requirements depend on your agent and model provider. Local models are also supported through compatible agents.
 
 ### Microsoft Store (recommended)
 
@@ -81,7 +81,7 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, choose your agent. Intelligent Terminal auto-detects several [ACP-compatible](https://agentclientprotocol.com/get-started/agents) agents on your machine (Copilot/Claude/Codex/Gemini/OpenCode/Antigravity). If no agents are found, it defaults to GitHub Copilot CLI and installs it for you via WinGet.
+1. On first launch, you can choose an agent from the detected options or continue to the terminal and configure an agent later.
 2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
 3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
 
@@ -106,7 +106,6 @@ All shortcuts are customizable through Intelligent Terminal settings.
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Ctrl+Shift+S</kbd> | Show or hide the sidebar |
 | <kbd>Ctrl+Shift+G</kbd> | Toggle the sidebar's Agents-only filter |
-| <kbd>Alt+Shift+/</kbd> | Open Command Palette in prompt mode |
 | <kbd>Alt+Shift+B</kbd> | Open an interactive delegate-agent tab with no startup prompt |
 | <kbd>Alt+V</kbd> | Paste a clipboard image into the agent pane |
 
@@ -118,7 +117,7 @@ Configure agent features under **Settings > Agents**. The agent pane and command
 
 | Setting | Options | Shortcut / command |
 |---------|---------|--------------------|
-| Agent | Choose the agent for the agent pane. GitHub Copilot is the default; other built-in agents and custom ACP-compatible commands are supported. | `/agent` |
+| Agent | Choose a built-in agent or a custom ACP-compatible command for the agent pane. | `/agent` |
 | Model | Choose the agent pane's model. Configure agent-provided session options or select a configured BYOK model for the current pane. | `/config`, `/model` |
 | Custom endpoint or local model | Add an OpenAI-compatible Chat Completions endpoint for GitHub Copilot or OpenCode, with a Base URL, Model ID, and optional API key. Keys are stored in Windows Credential Manager. Keyless local endpoints such as Ollama are supported. | `/model` to select an added model |
 | Pane position | Top, Bottom (default), Left, or Right. | `/move left\|right\|up\|down` |
@@ -127,7 +126,7 @@ Configure agent features under **Settings > Agents**. The agent pane and command
 | Token usage | Show remaining context and session cost when your agent reports them. Enabled by default. | |
 | Markdown formatting | Format agent replies after streaming stops, including replies loaded from saved history. Enabled by default. | |
 | Automatic approval | Let the agent run with the full permissions its CLI provides. Off by default; availability depends on the agent and organization policy. Terminal action cards still require your confirmation. | |
-| Command palette > Agent CLI | Choose the agent used for command-palette delegation and new interactive delegate tabs. | <kbd>Alt+Shift+/</kbd> to open agent prompt mode; <kbd>Alt+Shift+B</kbd> for a new interactive agent tab |
+| Command palette > Agent CLI | Choose the agent used for new interactive delegate tabs. | <kbd>Alt+Shift+B</kbd> |
 
 These shortcuts open or use the feature; they don't toggle its setting. All key bindings are customizable.
 
@@ -246,11 +245,7 @@ When a command fails, an indicator appears in the agent status bar. Click it or 
 
 ### Command Palette
 
-<p align="center">
-  <img src="./images/intelligent-terminal-command-palette.png" alt="Screenshot of Command Palette with an agent prompt">
-</p>
-
-Type `?` followed by your prompt in the Command Palette to kick off an agent task. Intelligent Terminal injects context from the active pane and starts the agent in a background tab. Use <kbd>Alt+Shift+/</kbd> to jump directly into prompt mode.
+Press <kbd>Ctrl+Shift+P</kbd> to find and run terminal actions.
 
 ---
 
@@ -270,7 +265,7 @@ All of this is held in memory for the active session only and discarded when the
 
 | Agent CLI | Data routing | Terms |
 |-----------|--------------|-------|
-| [GitHub Copilot](https://github.com/features/copilot/cli/) (default) | GitHub backend | [GitHub Copilot Trust Center](https://resources.github.com/copilot-trust-center/). Enterprise protections (e.g., zero data retention) apply for eligible plans. |
+| [GitHub Copilot](https://github.com/features/copilot/cli/) | GitHub backend | [GitHub Copilot Trust Center](https://resources.github.com/copilot-trust-center/). Enterprise protections (e.g., zero data retention) apply for eligible plans. |
 | Third-party or custom agent CLIs | Determined by the agent vendor | Governed by that vendor's terms, not Microsoft or GitHub agreements. |
 
 > [!NOTE]

@@ -25,17 +25,13 @@
     'Settings explains Gemini automatic approval restrictions' = 'Settings explains Gemini automatic approval restrictions'
     'AllowAutomaticApproval hides automatic approval and turns it off' = 'AllowAutomaticApproval hides automatic approval and turns it off'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
-    # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
+    # §2/§5 WT accelerators (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).
     'Hotkey opens pane'                 = 'Hotkey opens pane \(Ctrl'
     'Hotkey hides pane'                 = 'Hotkey hides pane \(Ctrl'
     'Alt+Shift+B launches background delegate' = 'Alt\+Shift\+B launches background delegate'
-    'Alt+Shift+/ opens agent delegation palette' = 'Alt\+Shift\+/ opens agent delegation palette'
-    'Command palette prompt launches delegate' = 'Command palette prompt launches delegate'
-    'Command palette cancel is safe'    = 'Command palette cancel is safe'
     # §6 custom delegate via accelerators (Feature.CustomDelegate)
     'Alt+Shift+B uses custom delegate'  = 'Alt\+Shift\+B uses custom delegate'
-    'Alt+Shift+/ uses custom delegate'  = 'Alt\+Shift\+/ uses custom delegate'
     # §6 custom delegate ENGINE (Feature.CustomDelegate, second Describe) — the custom-command
     # delegate path driven directly via `wta delegate --delegate-agent <custom cmdline>`.
     'Custom delegate cwd is correct'    = 'Custom delegate cwd is correct'
@@ -222,15 +218,9 @@
     # page and asserts the Model control renders for a custom agent (Feature.SettingsUi).
     'Model selection visible'           = 'Model selection visible: the model control shows'
 
-    # §5 delegate agent (Feature.Delegate) — the delegate ENGINE driven directly via `wta delegate`
-    # (the exact command Alt+Shift+B / the Alt+Shift+/ palette build), with Copilot as the delegate.
-    # NOT mapped (stay manual): 'Alt+Shift+B launches background delegate' + 'Alt+Shift+/ opens
-    # agent delegation palette' are WT accelerators (send-keys reaches the conpty, not WT's keybinding
-    # handler); 'Command palette prompt launches delegate' + 'Command palette cancel is safe' are the
-    # WT XAML command-palette UI (not harness-drivable) — though the engine the prompt path drives is
-    # covered by "Delegate with Copilot works". 'Delegate model is correct' is not observable in WT
-    # state or wta-delegate.log (the model is passed into the launched CLI) — UT-locked (command
-    # construction / delegateModel roundtrip). 'Delegate with non-Copilot agents' is env-gated.
+    # §5 direct `wta delegate` coverage with Copilot (Feature.Delegate).
+    # Feature.AgentHotkeys covers the background shortcut separately.
+    # Settings-model tests cover the delegate model round trip.
     'Delegate cwd is correct'           = 'Delegate cwd is correct'
     'Delegate provider is correct'      = 'Delegate provider is correct'
     'Delegate with Copilot works'       = 'Delegate with Copilot works'

@@ -108,7 +108,6 @@
     <ClInclude Include="AppCommandlineArgs.h" />
     <ClInclude Include="Commandline.h" />
     <ClInclude Include="CommandPaletteItems.h" />
-    <ClInclude Include="CommandPaletteTelemetry.h" />
     <ClInclude Include="SidebarTelemetry.h" />
     <ClInclude Include="Jumplist.h" />
     <ClInclude Include="LanguageProfileNotifier.h" />
@@ -124,6 +123,8 @@
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="SshHostStore.h" />
+    <ClInclude Include="..\inc\OpenSshExecutable.h" />
     <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="ProgramStatusPresentation.h" />
     <ClInclude Include="AgentIconUtils.h" />
@@ -251,6 +252,8 @@
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="SharedWta.cpp" />
+    <ClCompile Include="SshHostStore.cpp" />
+    <ClCompile Include="TerminalPage.SshHosts.cpp" />
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>

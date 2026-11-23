@@ -283,6 +283,14 @@ namespace winrt::TerminalApp::implementation
         _WindowProperties{ std::move(properties) }
     {
         InitializeComponent();
+        _InitializeSshHosts();
+        _UpdateSshHostsDockLayout();
+        WorkspaceRoot().SizeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
+            if (const auto page = weakThis.get())
+            {
+                page->_UpdateSshHostsDockLayout();
+            }
+        });
         BottomBarRoot().ActualThemeChanged([weakThis{ get_weak() }](auto&&, auto&&) {
             if (const auto page = weakThis.get())
             {
@@ -1245,24 +1253,6 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Method Description:
-    // - This method is called when the user submits a foreground agent prompt
-    //   from the command palette (? prefix). Opens or reuses an agent pane
-    //   and sends the prompt to it.
-    // Arguments:
-    // - prompt - the user's agent prompt text
-    // Return Value:
-    // - <none>
-    void TerminalPage::_OnAgentForegroundPromptRequested(const IInspectable& /*sender*/, const winrt::hstring& prompt)
-    {
-        _agentPaneLog("_OnAgentForegroundPromptRequested: prompt='" + winrt::to_string(prompt) + "' empty=" + (prompt.empty() ? "true" : "false"));
-        if (!prompt.empty())
-        {
-            _DelegatePromptToAgent(prompt);
-        }
-        // Empty ? is a no-op. Use >Toggle AI assistant (openAgentPane action) to open the agent pane.
-    }
-
-    // Method Description:
     // - This method is called when the user submits a background agent task
     //   from the command palette (& prefix). Currently a stub that will be
     //   connected to the Background Task Manager (C9) in a future change.
@@ -1447,6 +1437,7 @@ namespace winrt::TerminalApp::implementation
         if (!visible)
         {
             _tabStrip.Visibility(Visibility::Collapsed);
+            _UpdateSshHostsDockLayout();
         }
         else
         {
@@ -1496,14 +1487,9 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& sender,
+    void TerminalPage::_OnFreCompleted(const winrt::TerminalApp::FreOverlay& /*sender*/,
                                        const winrt::Windows::Foundation::IInspectable& /*args*/)
     {
-        if (const auto impl = winrt::get_self<implementation::FreOverlay>(sender))
-        {
-            _pendingFreAutoInstallCopilot = impl->ShouldAutoInstallCopilotAfterCompletion();
-        }
-
         // Hide the FRE overlay
         if (auto overlay = FreOverlayElement())
         {
@@ -2271,32 +2257,11 @@ namespace winrt::TerminalApp::implementation
         return winrt::hstring{};
     }
 
-    void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
-    {
-        _LaunchDelegate(prompt);
-    }
-
-    // Open the delegate agent interactively in a brand-new tab with no
-    // startup prompt — the "background agent" hotkey (Alt+Shift+B). This is
-    // the no-prompt sibling of the `?<prompt>` delegation: `wta delegate`
-    // (invoked with no PROMPT positional) connects to WT over COM and spawns
-    // a new tab whose commandline is the delegate agent's own interactive CLI.
+    // Open the configured delegate agent's interactive CLI in a new tab.
+    // WTA creates the tab through the terminal's COM protocol.
     void TerminalPage::_OpenBackgroundAgentTab()
     {
-        _LaunchDelegate(std::nullopt);
-    }
-
-    // Launch a hidden `wta delegate` process. With a prompt this is the
-    // `?<prompt>` foreground delegation (one-shot; the prompt is baked into
-    // the new tab's agent CLI). Without a prompt the agent opens interactively
-    // in a new tab. Either way wta itself creates the tab via the WT COM
-    // protocol; this launched process exits once the tab is spawned.
-    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt)
-    {
-        const auto triggerSource = prompt.has_value() ? L"CommandPalette" : L"Action";
-        _agentPaneLog(prompt.has_value() ?
-                          "_LaunchDelegate called, prompt='" + winrt::to_string(*prompt) + "'" :
-                          "_LaunchDelegate called (interactive, no prompt)");
+        _agentPaneLog("_OpenBackgroundAgentTab called");
         // Find the WTA executable.
         const auto wtaPath = _DetectWtaPath();
         if (wtaPath.empty())
@@ -2394,7 +2359,7 @@ namespace winrt::TerminalApp::implementation
 
         // Build: wta [--language <lang>] delegate --agent <agent>
         //        --delegate-agent <delegate> --delegate-source <host|wsl>
-        //        [--delegate-wsl-distro <distro>] "<prompt>"
+        //        [--delegate-wsl-distro <distro>]
         //
         // `--language` is a top-level Cli flag, so it must appear *before* the
         // `delegate` subcommand — otherwise clap rejects it and the process
@@ -2451,19 +2416,6 @@ namespace winrt::TerminalApp::implementation
             cmdline += L" --cwd " + quoteArg(std::wstring_view{ activeCwd });
         }
 
-        // Append the prompt as a positional argument — only for the
-        // foreground `?<prompt>` path. With no prompt, `wta delegate` opens
-        // the agent interactively (no PROMPT positional).
-        if (prompt.has_value() && !prompt->empty())
-        {
-            std::wstring escapedPrompt{ *prompt };
-            for (size_t pos = 0; (pos = escapedPrompt.find(L'"', pos)) != std::wstring::npos; pos += 2)
-            {
-                escapedPrompt.replace(pos, 1, L"\"\"");
-            }
-            cmdline += fmt::format(FMT_COMPILE(L" \"{}\""), escapedPrompt);
-        }
-
         _agentPaneLog("launching: " + winrt::to_string(winrt::hstring{ cmdline }));
 
         // Launch as a hidden background process.
@@ -2499,7 +2451,7 @@ namespace winrt::TerminalApp::implementation
             g_hTerminalAppProvider,
             "DelegateInvoked",
             TraceLoggingDescription("Event emitted when delegation is launched"),
-            TraceLoggingWideString(triggerSource, "TriggerSource"),
+            TraceLoggingWideString(L"Action", "TriggerSource"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
@@ -3994,11 +3946,6 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        if (_freAutoInstallTargetTabId == tabId)
-        {
-            _freAutoInstallTargetTabId = {};
-        }
-
         Json::Value tabParams;
         tabParams["tab_id"] = winrt::to_string(tabId);
         tabParams["window_id"] = std::to_string(_WindowProperties.WindowId());
@@ -4162,7 +4109,7 @@ namespace winrt::TerminalApp::implementation
         {
             return true;
         }
-        if (!shared.CanStart() || _sharedWtaFallbackProbeInFlight)
+        if (!shared.CanStart())
         {
             return false;
         }
@@ -4171,56 +4118,7 @@ namespace winrt::TerminalApp::implementation
         {
             return false;
         }
-        if (_settings.GlobalSettings().EffectiveAcpAgent().empty())
-        {
-            _sharedWtaFallbackProbeInFlight = true;
-            _StartSharedWtaServiceWithFallback();
-            return false;
-        }
         return shared.EnsureStarted(wtaPath, _BuildSharedWtaExtraArgs(), _BuildSharedWtaEnvironment());
-    }
-
-    safe_void_coroutine TerminalPage::_StartSharedWtaServiceWithFallback()
-    {
-        const auto weakThis = get_weak();
-        const auto dispatcher = Dispatcher();
-        std::unordered_set<std::wstring> availableAgents;
-        try
-        {
-            co_await winrt::resume_background();
-            availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
-        }
-        catch (...)
-        {
-            LOG_CAUGHT_EXCEPTION();
-        }
-        co_await wil::resume_foreground(dispatcher);
-        if (const auto page = weakThis.get())
-        {
-            page->_sharedWtaFallbackProbeInFlight = false;
-            auto& shared = SharedWta::Instance();
-            if (shared.CanStart())
-            {
-                const auto extraArgs = page->_BuildSharedWtaExtraArgs([&]() {
-                    for (const auto& agent : ::Microsoft::Terminal::Settings::Model::AgentRegistry::FilteredAcpAgents())
-                    {
-                        if (availableAgents.contains(std::wstring{ agent.id }))
-                        {
-                            return winrt::hstring{ agent.id };
-                        }
-                    }
-                    return winrt::hstring{};
-                });
-                if (!shared.EnsureStarted(page->_DetectWtaPath(), extraArgs, page->_BuildSharedWtaEnvironment()))
-                {
-                    co_return;
-                }
-            }
-            if (shared.IsRunning())
-            {
-                page->_RequestAgentSnapshotRefresh();
-            }
-        }
     }
 
     // Builds the per-process flag/value pairs that wta-master inherits
@@ -4229,17 +4127,10 @@ namespace winrt::TerminalApp::implementation
     // driven respawn path (`_ReconcileAgentSettings` → `SharedWta::Restart`)
     // stay in sync. Each pair is pushed as two separate vector elements
     // so SharedWta can apply its own Windows command-line quoting.
-    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs(const std::function<winrt::hstring()>& detectFallback)
+    std::vector<std::wstring> TerminalPage::_BuildSharedWtaExtraArgs()
     {
         const auto& globals = _settings.GlobalSettings();
-        // Resolved here (not on the caller side) so the Restart path
-        // doesn't have to duplicate the lookup. `agentCliPath` may be
-        // empty when no agent CLI is detected but policy doesn't actively
-        // block — pass through anyway; wta will surface the failure to
-        // spawn the child as an ACP error.
-        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, [this, &detectFallback]() {
-            return detectFallback ? detectFallback() : _DetectAgentCli();
-        });
+        const auto agentCliPath = _ResolveEffectiveAgentCliPath(globals, {});
 
         std::vector<std::wstring> extraArgs;
         const auto pushFlagValue = [&extraArgs](const std::wstring_view flag, const std::wstring_view value) {
@@ -4474,6 +4365,10 @@ namespace winrt::TerminalApp::implementation
         if (!hasAgentOverride && !hasProfileBackend)
         {
             effectiveAgentId = globals.EffectiveAcpAgent();
+            if (autoStash && effectiveAgentId.empty())
+            {
+                return false;
+            }
             effectiveModel = globals.AcpModel();
             effectiveAgentSource = L"host";
             effectiveAgentWslDistro = {};
@@ -8801,12 +8696,8 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        // Consume the visibility request before any pane operation can re-enter
-        // page state. The separate installation request is either reserved to
-        // this focused tab or expired below.
+        // Consume the visibility request before any pane operation can re-enter page state.
         _pendingFreEnsureAgentPaneVisible = false;
-        const bool requestAutoInstall = std::exchange(_pendingFreAutoInstallCopilot, false);
-        _freAutoInstallTargetTabId = {};
 
         if (_tabs.Size() == 0)
         {
@@ -8835,21 +8726,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        if (requestAutoInstall)
+        if (!_settings.GlobalSettings().EffectiveAcpAgent().empty())
         {
-            const auto binding = _ResolveAgentPaneSettingsBindingForTab(focusedTab);
-            if (binding.followsGlobalAgent &&
-                binding.agentId == L"copilot" &&
-                binding.agentSource == L"host")
-            {
-                _freAutoInstallTargetTabId = focusedTab->StableId();
-            }
-        }
-
-        _OpenOrReuseAgentPane(false, L"FirstRunExperience");
-        if (!_freAutoInstallTargetTabId.empty() && !focusedTab->FindAgentPane())
-        {
-            _freAutoInstallTargetTabId = {};
+            _OpenOrReuseAgentPane(false, L"FirstRunExperience");
         }
     }
 
@@ -10717,20 +10596,6 @@ namespace winrt::TerminalApp::implementation
                     const bool paneOpen = !tabImpl->HasStashedAgentPane();
                     _RequestAgentStateForTab(tabImpl, view, paneOpen);
 
-                    if (!_freAutoInstallTargetTabId.empty() &&
-                        tabImpl->StableId() == _freAutoInstallTargetTabId)
-                    {
-                        if (agentId == L"copilot")
-                        {
-                            Json::Value installParams;
-                            installParams["tab_id"] = winrt::to_string(tabImpl->StableId());
-                            installParams["agent_id"] = "copilot";
-                            _agentPaneLog(
-                                "OnAgentStatusChanged: delivering one-shot FRE Copilot install request");
-                            _RaiseProtocolEvent("fre_auto_install_selected_agent", installParams);
-                        }
-                        _freAutoInstallTargetTabId = {};
-                    }
                 }
             }
         };
@@ -15900,7 +15765,6 @@ namespace winrt::TerminalApp::implementation
         p.CommandLineExecutionRequested({ this, &TerminalPage::_OnCommandLineExecutionRequested });
         p.SwitchToTabRequested({ this, &TerminalPage::_OnSwitchToTabRequested });
         p.PreviewAction({ this, &TerminalPage::_PreviewActionHandler });
-        p.AgentForegroundPromptRequested({ this, &TerminalPage::_OnAgentForegroundPromptRequested });
         p.AgentBackgroundTaskRequested({ this, &TerminalPage::_OnAgentBackgroundTaskRequested });
 
         return p;
@@ -17833,7 +17697,9 @@ namespace winrt::TerminalApp::implementation
         {
             if (const auto tabImpl{ _GetFocusedTabImpl() })
             {
-                return tabImpl->CalcSnappedDimension(widthOrHeight, dimension);
+                const auto dockWidth = widthOrHeight && SshHostsDock().Visibility() == Visibility::Visible ? SshHostsDock().ActualWidth() : 0.0;
+                const auto terminalDimension = static_cast<float>(std::max(0.0, static_cast<double>(dimension) - dockWidth));
+                return tabImpl->CalcSnappedDimension(widthOrHeight, terminalDimension) + static_cast<float>(dockWidth);
             }
         }
         return dimension;

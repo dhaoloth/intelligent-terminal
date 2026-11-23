@@ -180,19 +180,13 @@ namespace Microsoft::Terminal::AgentAvailability
         {
             appendAllowed(currentSelection);
             appendAllowed(effectiveAgent);
-            appendAllowed(L"copilot");
-            if (result.empty() && !allowedAgents.empty())
-            {
-                result.push_back(allowedAgents.front());
-            }
             return result;
         }
 
         for (const auto& agent : allowedAgents)
         {
             const auto status = FindHostAgentAvailability(*snapshot, agent.id);
-            if (Reg::AgentIdEquals(agent.id, L"copilot") ||
-                (status && (status->nativeCliFound || status->acpBootstrapAvailable)))
+            if (status && (status->nativeCliFound || status->acpBootstrapAvailable))
             {
                 result.push_back(agent);
             }

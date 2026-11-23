@@ -121,6 +121,7 @@
     <ClInclude Include="VsSetupConfiguration.h" />
     <ClInclude Include="WslDistroGenerator.h" />
     <ClInclude Include="SshHostGenerator.h" />
+    <ClInclude Include="..\inc\OpenSshExecutable.h" />
     <ClInclude Include="AgentProfileGenerator.h" />
     <ClInclude Include="ModelSerializationHelpers.h" />
   </ItemGroup>

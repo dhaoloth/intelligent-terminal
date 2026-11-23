@@ -1,21 +1,12 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §5 Delegate agent — the ENGINE, driven directly.
 #
-# Delegate mode launches a separate agent task from the current cwd, in a NEW tab, WITHOUT the
-# interactive agent-pane chat. The UI entry points (Alt+Shift+B, and the Alt+Shift+/ command
-# palette) are WT accelerators / a WT XAML palette and are NOT harness-injectable (send-keys
-# reaches the conpty, not WT's keybinding handler; the command palette is not drivable here).
-# BUT both entry points do the same thing: build and run `wta delegate [PROMPT] --agent <acp>
-# --delegate-agent <id> [--delegate-model <m>] [--cwd <dir>]` (see TerminalPage.cpp _LaunchDelegate).
-# So we exercise the delegate ENGINE directly via that command — Copilot is the delegate agent
-# (the arbitrary configured provider). Each delegate creates a new tab; we diff the tab list to
-# find it and assert on the new tab / its pane.
+# `wta delegate` launches a separate agent task in a new tab. These tests drive that
+# command directly with Copilot, and compare tab lists to identify the new tab.
+# Feature.AgentHotkeys covers the Alt+Shift+B window shortcut separately.
 #
-# Not covered here (documented in release-coverage-map.psd1): the Alt+Shift+B / Alt+Shift+/
-# shortcuts and the command-palette prompt/cancel are UI entry points that can't be injected;
-# "Delegate model is correct" is not observable in WT state or wta-delegate.log (the CLI receives
-# --model internally) and is covered by the settings-model UT roundtrip; non-Copilot delegate is
-# env-gated (needs Claude/Codex/Gemini installed + authenticated).
+# Settings-model tests cover the delegate model round trip.
+# Feature.DelegateNonCopilot requires an installed non-Copilot provider.
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
