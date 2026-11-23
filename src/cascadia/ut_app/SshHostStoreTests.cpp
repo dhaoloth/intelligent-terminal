@@ -7,6 +7,7 @@
 #include "../../types/inc/utils.hpp"
 
 #include <fstream>
+#include <shellapi.h>
 
 using namespace WEX::TestExecution;
 using namespace Microsoft::Terminal::OpenSsh;
