@@ -1769,12 +1769,15 @@ namespace SettingsModelUnitTests
 
     void CustomAgentAndPolicyTests::AgentPaneYoloModeRoundtripsAndDefaults()
     {
-        // Explicit value survives load, and the underlying setting is
-        // readable independent of policy (policy NotConfigured → allowed).
-        const auto settings = MakeSettings(R"("agentPane.yoloMode": true)");
+        // The stored preference survives load. Applying it requires an explicit provider.
+        const auto settings = MakeSettings(R"("acpAgent": "copilot", "agentPane.yoloMode": true)");
         SetPolicy(MakePolicy());
         VERIFY_IS_TRUE(settings->GlobalSettings().AgentPaneYoloMode());
         VERIFY_IS_TRUE(settings->GlobalSettings().EffectiveAgentPaneYoloMode());
+
+        const auto noProvider = MakeSettings(R"("agentPane.yoloMode": true)");
+        VERIFY_IS_TRUE(noProvider->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(noProvider->GlobalSettings().EffectiveAgentPaneYoloMode());
 
         // Absent → falls back to the `false` default (MTSMSettings.h).
         const auto defaulted = MakeSettings({});

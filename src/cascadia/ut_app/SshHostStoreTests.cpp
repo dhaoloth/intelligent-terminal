@@ -32,22 +32,31 @@ namespace TerminalAppUnitTests
         return host;
     }
 
+    static std::vector<std::wstring> parseArguments(const std::wstring& command)
+    {
+        int count{};
+        const wil::unique_hlocal_ptr<PWSTR[]> arguments{ CommandLineToArgvW(command.c_str(), &count) };
+        THROW_LAST_ERROR_IF_NULL(arguments.get());
+        return { arguments.get(), arguments.get() + count };
+    }
+
     void SshHostStoreTests::SelectsAuthenticationAndJumpHost()
     {
         auto host = makeHost();
-        const auto openssh = BuildCommandline(L"ssh.exe", host);
-        VERIFY_IS_TRUE(openssh.ends_with(L" -J bastion -- example.test"));
-        VERIFY_IS_TRUE(openssh.find(L"PreferredAuthentications") == std::wstring::npos);
+        const std::vector<std::wstring> openSshExpected{ L"ssh.exe", L"-p", L"22", L"-J", L"bastion", L"--", L"example.test" };
+        VERIFY_IS_TRUE(parseArguments(BuildCommandline(L"ssh.exe", host)) == openSshExpected);
 
         host.authentication = HostAuthentication::Password;
-        VERIFY_IS_TRUE(BuildCommandline(L"ssh.exe", host).find(L"PreferredAuthentications=keyboard-interactive,password") != std::wstring::npos);
+        const auto password = parseArguments(BuildCommandline(L"ssh.exe", host));
+        VERIFY_IS_TRUE(std::ranges::find(password, L"PreferredAuthentications=keyboard-interactive,password") != password.end());
 
         host.authentication = HostAuthentication::IdentityFile;
         VERIFY_ARE_EQUAL(InvalidHostField::IdentityFile, ValidateHost(host));
         host.identityFile = LR"(C:\Key files\fixture)";
-        const auto key = BuildCommandline(L"ssh.exe", host);
-        VERIFY_IS_TRUE(key.find(L"IdentitiesOnly=yes") != std::wstring::npos);
-        VERIFY_IS_TRUE(key.find(LR"( -i "C:\Key files\fixture")") != std::wstring::npos);
+        const auto key = parseArguments(BuildCommandline(L"ssh.exe", host));
+        const std::vector<std::wstring> identityOption{ L"-i", host.identityFile };
+        VERIFY_IS_TRUE(std::ranges::find(key, L"IdentitiesOnly=yes") != key.end());
+        VERIFY_IS_FALSE(std::ranges::search(key, identityOption).empty());
     }
 
     void SshHostStoreTests::AddsForwardsToShellOnly()
@@ -58,25 +67,26 @@ namespace TerminalAppUnitTests
             { ForwardDirection::Remote, L"", 18080, L"localhost", 8080 },
             { ForwardDirection::Dynamic, L"127.0.0.1", 1080, L"", 0 },
         };
-        const auto shell = BuildCommandline(L"ssh.exe", host);
-        VERIFY_IS_TRUE(shell.find(L" -L [::1]:10022:[2001:db8::10]:22") != std::wstring::npos);
-        VERIFY_IS_TRUE(shell.find(L" -R 18080:localhost:8080") != std::wstring::npos);
-        VERIFY_IS_TRUE(shell.find(L" -D 127.0.0.1:1080") != std::wstring::npos);
-        VERIFY_IS_TRUE(shell.find(L"ExitOnForwardFailure=yes") != std::wstring::npos);
+        const std::vector<std::wstring> shellExpected{
+            L"ssh.exe", L"-p", L"22", L"-o", L"ExitOnForwardFailure=yes",
+            L"-L", L"[::1]:10022:[2001:db8::10]:22", L"-R", L"18080:localhost:8080",
+            L"-D", L"127.0.0.1:1080", L"-J", L"bastion", L"--", L"example.test"
+        };
+        VERIFY_IS_TRUE(parseArguments(BuildCommandline(L"ssh.exe", host)) == shellExpected);
 
-        const auto agent = BuildCommandline(L"ssh.exe", host, L"codex");
-        VERIFY_IS_TRUE(agent.find(L" -J bastion -- example.test") != std::wstring::npos);
-        VERIFY_IS_TRUE(agent.find(L" -L ") == std::wstring::npos);
-        VERIFY_IS_TRUE(agent.find(L" -R ") == std::wstring::npos);
-        VERIFY_IS_TRUE(agent.find(L" -D ") == std::wstring::npos);
+        const std::vector<std::wstring> agentExpected{
+            L"ssh.exe", L"-t", L"-p", L"22", L"-J", L"bastion", L"--", L"example.test", L"sh -lc 'exec codex'"
+        };
+        VERIFY_IS_TRUE(parseArguments(BuildCommandline(L"ssh.exe", host, L"codex")) == agentExpected);
 
-        const auto sftp = BuildSftpCommandline(L"sftp.exe", LR"(C:\OpenSSH Bin\ssh.exe)", host);
-        VERIFY_IS_TRUE(sftp.find(LR"( -S "C:\OpenSSH Bin\ssh.exe")") != std::wstring::npos);
-        VERIFY_IS_TRUE(sftp.find(L" -P 22") != std::wstring::npos);
-        VERIFY_IS_TRUE(sftp.ends_with(L" -J bastion -- example.test"));
-        VERIFY_IS_TRUE(sftp.find(L"ExitOnForwardFailure") == std::wstring::npos);
+        constexpr std::wstring_view sshPath{ LR"(C:\OpenSSH Bin\ssh.exe)" };
+        const std::vector<std::wstring> sftpExpected{
+            L"sftp.exe", L"-S", std::wstring{ sshPath }, L"-P", L"22", L"-J", L"bastion", L"--", L"example.test"
+        };
+        VERIFY_IS_TRUE(parseArguments(BuildSftpCommandline(L"sftp.exe", sshPath, host)) == sftpExpected);
         host.address = L"2001:db8::a";
-        VERIFY_IS_TRUE(BuildSftpCommandline(L"sftp.exe", L"ssh.exe", host).ends_with(L" -- [2001:db8::a]"));
+        const auto ipv6Arguments = parseArguments(BuildSftpCommandline(L"sftp.exe", L"ssh.exe", host));
+        VERIFY_ARE_EQUAL(std::wstring{ L"[2001:db8::a]" }, ipv6Arguments.back());
 
         host.forwards.front().listenHost = L"localhost -o ProxyCommand=invalid";
         VERIFY_ARE_EQUAL(InvalidHostField::Forwarding, ValidateHost(host));
