@@ -24,7 +24,8 @@ permissions:
 
 concurrency:
   group: msix-x64-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve the artifact for a build already running on this branch.
+  cancel-in-progress: false
 
 jobs:
   msix:
@@ -84,7 +85,7 @@ jobs:
           retention-days: 14
 
       - name: Upload package build log
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: msix-x64-build-log-${{ github.run_attempt }}

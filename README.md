@@ -11,6 +11,7 @@
 
 - [What is Intelligent Terminal?](#what-is-intelligent-terminal)
 - [Installing and running Intelligent Terminal](#installing-and-running-intelligent-terminal)
+  - [SSH workspace builds](#ssh-workspace-builds)
   - [Microsoft Store](#microsoft-store-recommended)
   - [WinGet](#winget)
   - [Downloads](#downloads)
@@ -22,7 +23,6 @@
   - [Agent Status Bar](#agent-status-bar)
   - [Agent Pane](#agent-pane)
   - [Agent Management](#agent-management)
-  - [Error Detection](#error-detection)
   - [Command Palette](#command-palette)
 - [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
@@ -41,6 +41,8 @@
 
 Intelligent Terminal is an experimental fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration.
 
+The SSH and agent workspace in this fork adds a persistent **Connections** tree for saved SSH hosts and local WSL distributions. It opens host shells and discovered Codex CLI, Claude Code, Hermes Agent, and Qwen Code sessions in terminal tabs. The [workspace state](./STATE.md) records current verification and remaining work.
+
 Intelligent Terminal works with [Agent Client Protocol (ACP)-compatible](https://agentclientprotocol.com/get-started/agents) agent CLIs. You can install and select your preferred agent to use the agent pane.
 
 Intelligent Terminal takes all the features you love in Windows Terminal such as:  tabs, profiles, themes, settings, shells, and keyboard shortcuts, which all work the way you expect.
@@ -53,6 +55,10 @@ Read the [announcement blog post](https://devblogs.microsoft.com/commandline/ann
 
 > [!NOTE]
 > Intelligent Terminal requires Windows 10 2004 (19041) or later. The agent pane requires a supported agent CLI. Account, subscription, and API-key requirements depend on your agent and model provider. Local models are also supported through compatible agents.
+
+### SSH workspace builds
+
+The [Build x64 MSIX workflow](https://github.com/dhaoloth/intelligent-terminal/actions/workflows/build-msix-x64.yml?query=branch%3Adev%2Fdhaoloth%2Fssh-agent-workspace) publishes an unsigned x64 package and its dependencies when the build succeeds. Download the artifact for the commit you want to test. Windows deployment requires a suitable signing or development setup for the target environment. The Store, WinGet and Downloads entries below are for the upstream release.
 
 ### Microsoft Store (recommended)
 
@@ -81,16 +87,10 @@ winget install --id Microsoft.IntelligentTerminal -e
 
 ## Get Started
 
-1. On first launch, you can choose an agent from the detected options or continue to the terminal and configure an agent later.
-2. If you aren't already authenticated, the agent pane walks you through sign-in. For GitHub Copilot Enterprise, press <kbd>E</kbd> at the sign-in prompt and enter your enterprise host (for example, `your-org.ghe.com`); the last host you used is remembered.
-3. Start asking questions and using the agent pane for assistance. The agent has context on your shell output, no copy-pasting needed. The agent pane does not run commands in your shell without your explicit approval: you choose whether to run its suggested command, copy it into your shell to run yourself, or dismiss it.
-
-> [!TIP]
-> If you see "running scripts is disabled on this system" or an `UnauthorizedAccess` error in PowerShell, your execution policy is blocking your profile and Intelligent Terminal can't initialize shell integration. Run:
-> ```powershell
-> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-> ```
-> If you run into any other issues or dependency errors, see [installing-dependencies.md](./doc/installing-dependencies.md).
+1. Add a host under **Connections**, or import aliases from your OpenSSH configuration. Set its address, port, user and authentication mode in host properties.
+2. Select a saved SSH host or a WSL distribution to discover agents. Double-click the host or press Enter to open a shell. Activate a child agent to open its native CLI in a new tab.
+3. Open **Agent sessions** from the Connections header to return to a native agent pane. Use **SFTP** on a saved host to browse or open an interactive file-transfer tab.
+4. To bring over your terminal colors and font, open **Settings > Appearance**, import your Windows Terminal `settings.json`, and save.
 
 ---
 
@@ -102,7 +102,6 @@ All shortcuts are customizable through Intelligent Terminal settings.
 |----------|--------|
 | <kbd>Ctrl+Shift+.</kbd> | Toggle the agent pane |
 | <kbd>Ctrl+Shift+I</kbd> | Switch focus to/from the agent pane |
-| <kbd>Ctrl+Alt+.</kbd> | Open agent pane with error context |
 | <kbd>Ctrl+Shift+/</kbd> | Open agent management |
 | <kbd>Ctrl+Shift+S</kbd> | Show or hide the sidebar |
 | <kbd>Ctrl+Shift+G</kbd> | Toggle the sidebar's Agents-only filter |
@@ -173,7 +172,7 @@ To return to horizontal tabs, right-click a tab and change the tab layout.
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window. On the left are the agent pane toggle (<kbd>Ctrl+Shift+.</kbd>) and the error detection icon (<kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected.
+The agent status bar sits at the bottom of the window. On the left is the agent pane toggle (<kbd>Ctrl+Shift+.</kbd>).
 
 In horizontal tab mode, the sessions icon appears at the bottom right and opens agent management (<kbd>Ctrl+Shift+/</kbd>). In sidebar mode, this icon is hidden; use the sidebar's **Recent agent sessions** section instead.
 
@@ -204,7 +203,6 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 | `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
 | `/clear` | Clear the chat scrollback (keeps the current session) |
 | `/config` | Configure the current agent session using the options your agent exposes. With GitHub Copilot, for example, you can set the mode (agent, plan, or autopilot), model, reasoning effort, and whether it asks for approval before using tools |
-| `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
 | `/help` | Show the command list |
 | `/model [id]` | Pick the model for this pane; bare `/model` opens a picker of your configured BYOK models, `/model <id>` switches directly |
 | `/move [position]` | Move this tab's agent pane without changing the global setting or other tabs; `/move left\|right\|up\|down` (aliases `l`/`r`/`u`/`d`) |
@@ -234,14 +232,6 @@ View all active agents, their status, and past sessions. Pick up a workflow wher
 While a tracked built-in agent session is live, its terminal pane uses the agent's icon. Vertical pane rows show their own icons; tab headers in both layouts follow the focused terminal pane. Focusing the AI helper keeps its associated terminal pane as the source. When the session ends, or the provider is custom or unknown, the profile icon is used instead. This works whether or not Agent status is selected as visible tab metadata.
 
 Sidebar tab metadata, including Agent status, follows the same terminal source. Focusing the AI helper does not replace it with the helper's status, and the terminal's status continues updating while you use the helper.
-
-### Error Detection
-
-<p align="center">
-  <img src="./images/intelligent-terminal-error-detection.png" alt="Screenshot of automatic error detection with a suggested fix">
-</p>
-
-When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes. You can also trigger a fix at any time from the agent pane with the `/fix` slash command.
 
 ### Command Palette
 
@@ -288,6 +278,8 @@ The software may collect information about you and your use of the software and 
 ## Building the Code
 
 Building Intelligent Terminal is the same as building Windows Terminal. See the [Developer Guidance](https://github.com/microsoft/terminal#developer-guidance) section of the Windows Terminal README for prerequisites, build instructions, and debugging steps.
+
+The x64 MSIX build uses [`_build_msix_x64.cmd`](./_build_msix_x64.cmd). The [workflow](./.github/workflows/build-msix-x64.yml) records the Windows toolchain, NuGet restore commands, and Release WTA build used before that script. The existing [local installer script](./build/scripts/New-WtaLocalInstaller.ps1) can stage an unpackaged setup executable from a built Dev MSIX and its XAML dependency.
 
 ---
 

@@ -805,7 +805,7 @@ namespace SettingsModelUnitTests
     void SerializationTests::ImportWindowsTerminalAppearanceWithSchemeCollision()
     {
         auto settings = CascadiaSettings::LoadDefaults();
-        const Model::ColorScheme existingScheme{ L"Custom" };
+        const winrt::Microsoft::Terminal::Settings::Model::ColorScheme existingScheme{ L"Custom" };
         settings.GlobalSettings().AddColorScheme(existingScheme);
         static constexpr std::string_view source{ R"({
             "defaultProfile": "{22222222-2222-2222-2222-222222222222}",
@@ -853,7 +853,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(L"Imported Mono", defaults.FontInfo().FontFace());
 
         bool serializedImportedScheme = false;
-        const auto serializedSettings = settings.ToJson();
+        const auto serializedSettings = winrt::get_self<implementation::CascadiaSettings>(settings)->ToJson();
         for (const auto& scheme : serializedSettings["schemes"])
         {
             serializedImportedScheme |= scheme["name"].asString() == "Windows Terminal - Custom";
