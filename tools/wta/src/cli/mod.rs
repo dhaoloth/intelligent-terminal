@@ -3,6 +3,7 @@ pub(crate) mod args;
 pub(crate) mod delegate;
 pub(crate) mod hooks;
 pub(crate) mod native_agent;
+pub(crate) mod native_probe;
 pub(crate) mod probes;
 pub(crate) mod sessions;
 pub(crate) mod wt;
@@ -200,6 +201,24 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
         Command::ProbeAgentSources { wsl_distro } => probes::run_agent_sources(&wsl_distro).await,
         Command::ProbeHostAgents => probes::run_host_agents(),
         Command::ProbeProfileAgents => native_agent::probe(),
+        Command::ProbeNativeAgents {
+            wsl_distro,
+            ssh_host,
+            ssh_hostname,
+            ssh_port,
+            ssh_user,
+            ssh_identity_file,
+        } => {
+            native_probe::run(
+                wsl_distro.as_deref(),
+                ssh_host.as_deref(),
+                ssh_hostname.as_deref(),
+                ssh_port,
+                ssh_user.as_deref(),
+                ssh_identity_file.as_deref(),
+            )
+            .await
+        }
         Command::LaunchAgent {
             agent_id,
             model,

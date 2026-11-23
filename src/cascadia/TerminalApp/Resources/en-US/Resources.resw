@@ -1804,14 +1804,38 @@ For all available options, run 'wt new-tab --help'.</value>
   <data name="SshHostsMenuItem" xml:space="preserve">
     <value>SSH hosts</value>
   </data>
+  <data name="ConnectionsTitle" xml:space="preserve">
+    <value>Connections</value>
+  </data>
+  <data name="ConnectionAgentDiscovering" xml:space="preserve">
+    <value>Discovering agents…</value>
+  </data>
+  <data name="ConnectionAgentNoneFound" xml:space="preserve">
+    <value>No supported agents found.</value>
+  </data>
+  <data name="ConnectionAgentDiscoveryUnavailable" xml:space="preserve">
+    <value>Agent discovery unavailable.</value>
+  </data>
+  <data name="ConnectionAgentAuthenticationRequired" xml:space="preserve">
+    <value>SSH authentication is required for agent discovery.</value>
+  </data>
+  <data name="ConnectionAgentUnsupported" xml:space="preserve">
+    <value>Agent discovery is unsupported on this connection.</value>
+  </data>
+  <data name="ConnectionAgentTargetUnreachable" xml:space="preserve">
+    <value>Could not reach the target for agent discovery.</value>
+  </data>
+  <data name="ConnectionTerminalLaunchFailed" xml:space="preserve">
+    <value>Could not open the terminal tab.</value>
+  </data>
   <data name="SshHostsConnect" xml:space="preserve">
     <value>Connect</value>
   </data>
   <data name="SshHostsSearch" xml:space="preserve">
-    <value>Search saved hosts</value>
+    <value>Search connections</value>
   </data>
   <data name="SshHostsNoMatches" xml:space="preserve">
-    <value>No saved hosts match your search.</value>
+    <value>No connections match your search.</value>
   </data>
   <data name="SshHostsImportAliases" xml:space="preserve">
     <value>Import OpenSSH aliases</value>
@@ -1820,7 +1844,7 @@ For all available options, run 'wt new-tab --help'.</value>
     <value>Review OpenSSH aliases</value>
   </data>
   <data name="SshHostsImportDescription" xml:space="preserve">
-    <value>These aliases will be added to your saved hosts. OpenSSH configuration supplies their connection settings.</value>
+    <value>OpenSSH configuration supplies the connection settings. Already saved aliases are skipped.</value>
   </data>
   <data name="SshHostsImportEmpty" xml:space="preserve">
     <value>No importable host aliases were found in the OpenSSH configuration.</value>

@@ -40,7 +40,7 @@ namespace Microsoft::Terminal::OpenSsh
 
     InvalidHostField ValidateHost(const SavedHost& host);
     uint32_t ParsePort(std::wstring_view value) noexcept;
-    std::wstring BuildCommandline(std::wstring_view executable, const SavedHost& host);
+    std::wstring BuildCommandline(std::wstring_view executable, const SavedHost& host, std::wstring_view nativeAgent = {});
     std::vector<std::wstring> LoadConfigAliases();
 
     class HostStore

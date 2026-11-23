@@ -103,14 +103,15 @@ namespace Microsoft::Terminal::WtaProcess
     // than a second pipe — it would otherwise need its own drain to avoid
     // deadlocking a chatty child, and every wta subcommand already mirrors
     // its diagnostics into the wta logs.
-    // The optional cancellation flag must outlive this call. Only the captured
-    // child is terminated, never its descendants or a shared WTA master.
+    // The optional cancellation flag must outlive this call. Process tree
+    // ownership is opt-in for dedicated one-shot commands such as target probes.
     inline CaptureResult RunWtaCapture(const std::wstring& wtaPath,
                                        const std::wstring& argsAfterExe,
                                        DWORD timeoutMs,
                                        wchar_t* envBlock = nullptr,
                                        bool mergeStderr = true,
-                                       const std::atomic<bool>* cancellation = nullptr)
+                                       const std::atomic<bool>* cancellation = nullptr,
+                                       bool ownProcessTree = false)
     {
         CaptureResult result;
         const auto cancelled = [&]() {
@@ -176,6 +177,18 @@ namespace Microsoft::Terminal::WtaProcess
         std::wstring mutableCmd = cmdline;
 
         DWORD flags = CREATE_NO_WINDOW;
+        wil::unique_handle job;
+        if (ownProcessTree)
+        {
+            job.reset(CreateJobObjectW(nullptr, nullptr));
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            if (!job || !SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+            {
+                return result;
+            }
+            flags |= CREATE_SUSPENDED;
+        }
         if (envBlock)
         {
             flags |= CREATE_UNICODE_ENVIRONMENT;
@@ -199,6 +212,11 @@ namespace Microsoft::Terminal::WtaProcess
         }
         wil::unique_handle proc{ pi.hProcess };
         wil::unique_handle thread{ pi.hThread };
+        if (job && (!AssignProcessToJobObject(job.get(), proc.get()) || ResumeThread(thread.get()) == static_cast<DWORD>(-1)))
+        {
+            LOG_IF_WIN32_BOOL_FALSE(TerminateProcess(proc.get(), ERROR_CANCELLED));
+            return result;
+        }
 
         // Close write end so pipe sees EOF when child exits (if no grandchildren).
         writeHandle.reset();
@@ -235,6 +253,7 @@ namespace Microsoft::Terminal::WtaProcess
             {
                 result.cancelled = cancelled();
                 result.timedOut = !result.cancelled;
+                job.reset();
                 if (!TerminateProcess(proc.get(), result.cancelled ? ERROR_CANCELLED : ERROR_TIMEOUT))
                 {
                     const auto error = GetLastError();

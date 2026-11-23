@@ -961,7 +961,9 @@ namespace winrt::TerminalApp::implementation
         void _CreateNewTabFlyout();
         void _InitializeSshHosts();
         void _UpdateSshHostsDockLayout();
-        void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host);
+        void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host, std::wstring_view agent = {});
+        void _ConnectWslDistribution(std::wstring_view distribution, std::wstring_view agent = {});
+        bool _OpenConnectionTab(std::wstring_view commandline, std::wstring_view title);
         safe_void_coroutine _ShowSshHosts(std::optional<::Microsoft::Terminal::OpenSsh::SavedHost> host = std::nullopt);
         std::vector<winrt::Windows::UI::Xaml::Controls::MenuFlyoutItemBase> _CreateNewTabFlyoutItems(winrt::Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::NewTabMenuEntry> entries);
         winrt::Windows::UI::Xaml::Controls::IconElement _CreateNewTabFlyoutIcon(const winrt::hstring& icon);

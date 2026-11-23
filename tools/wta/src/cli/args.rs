@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgGroup, Parser, Subcommand};
 
 use crate::{
     agent_hooks_installer, agent_registry, agent_sessions, agent_tools::command_resolution,
@@ -503,6 +503,37 @@ pub(crate) enum Command {
     ProbeHostAgents,
     /// Discover installed Windows interactive agent CLIs (not ACP adapters).
     ProbeProfileAgents,
+    /// Probe native agent CLIs in one explicitly selected WSL distribution or SSH host.
+    #[command(group(
+        ArgGroup::new("native_probe_target")
+            .required(true)
+            .multiple(false)
+            .args(["wsl_distro", "ssh_host"])
+    ))]
+    ProbeNativeAgents {
+        /// Exact WSL distribution name.
+        #[arg(long, conflicts_with = "ssh_host")]
+        wsl_distro: Option<String>,
+        /// OpenSSH config alias or destination host.
+        #[arg(long, conflicts_with = "wsl_distro")]
+        ssh_host: Option<String>,
+        /// Override the SSH destination hostname while retaining alias config.
+        #[arg(long, requires = "ssh_host")]
+        ssh_hostname: Option<String>,
+        /// Override the SSH port.
+        #[arg(
+            long,
+            requires = "ssh_host",
+            value_parser = clap::value_parser!(u16).range(1..)
+        )]
+        ssh_port: Option<u16>,
+        /// Override the SSH username.
+        #[arg(long, requires = "ssh_host")]
+        ssh_user: Option<String>,
+        /// Explicit SSH identity file.
+        #[arg(long, requires = "ssh_host")]
+        ssh_identity_file: Option<String>,
+    },
     /// Run a built-in agent's native interactive CLI in the current console.
     LaunchAgent {
         #[arg(long)]

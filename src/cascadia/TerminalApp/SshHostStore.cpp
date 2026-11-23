@@ -232,37 +232,44 @@ namespace Microsoft::Terminal::OpenSsh
         return InvalidHostField::None;
     }
 
-    std::wstring BuildCommandline(const std::wstring_view executable, const SavedHost& host)
+    std::wstring BuildCommandline(const std::wstring_view executable, const SavedHost& host, const std::wstring_view nativeAgent)
     {
         THROW_HR_IF(E_INVALIDARG, executable.empty() || ValidateHost(host) != InvalidHostField::None);
+        THROW_HR_IF(E_INVALIDARG, !nativeAgent.empty() && !std::ranges::all_of(nativeAgent, _isAsciiLetter));
 
         std::wstring command;
         til::append_quoted_argument(command, executable);
-        if (host.usesOpenSshConfig)
+        if (!nativeAgent.empty())
         {
-            command.append(L" -- ");
-            til::append_quoted_argument(command, host.address);
-            return command;
+            command.append(L" -t");
         }
-        command.append(L" -o BatchMode=no -p ");
-        command.append(std::to_wstring(host.port));
-        if (!host.username.empty())
+        if (!host.usesOpenSshConfig)
         {
-            command.append(L" -l ");
-            til::append_quoted_argument(command, host.username);
-        }
-        if (host.identityFile.empty())
-        {
-            command.append(L" -o PreferredAuthentications=keyboard-interactive,password"
-                           L" -o KbdInteractiveAuthentication=yes -o PasswordAuthentication=yes -o NumberOfPasswordPrompts=3");
-        }
-        else
-        {
-            command.append(L" -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o IdentitiesOnly=yes -i ");
-            til::append_quoted_argument(command, host.identityFile);
+            command.append(L" -o BatchMode=no -p ");
+            command.append(std::to_wstring(host.port));
+            if (!host.username.empty())
+            {
+                command.append(L" -l ");
+                til::append_quoted_argument(command, host.username);
+            }
+            if (host.identityFile.empty())
+            {
+                command.append(L" -o PreferredAuthentications=keyboard-interactive,password"
+                               L" -o KbdInteractiveAuthentication=yes -o PasswordAuthentication=yes -o NumberOfPasswordPrompts=3");
+            }
+            else
+            {
+                command.append(L" -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o IdentitiesOnly=yes -i ");
+                til::append_quoted_argument(command, host.identityFile);
+            }
         }
         command.append(L" -- ");
         til::append_quoted_argument(command, host.address);
+        if (!nativeAgent.empty())
+        {
+            command.push_back(L' ');
+            til::append_quoted_argument(command, std::wstring{ L"sh -lc 'exec " }.append(nativeAgent).append(L"'"));
+        }
         return command;
     }
 

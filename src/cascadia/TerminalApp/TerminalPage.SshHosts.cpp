@@ -6,9 +6,15 @@
 #include "SshHostStore.h"
 
 #include <LibraryResources.h>
+#include <array>
+#include <json/json.h>
+#include <til/commandline.h>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
+#include "../inc/AgentPolicy.h"
 #include "../inc/OpenSshExecutable.h"
+#include "../inc/WslDistributions.h"
+#include "../inc/WtaProcess.h"
 #include "../../types/inc/utils.hpp"
 
 using namespace winrt;
@@ -19,9 +25,218 @@ using winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings;
 
 namespace OpenSsh = ::Microsoft::Terminal::OpenSsh;
 namespace TreeControls = winrt::Microsoft::UI::Xaml::Controls;
+namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
 
 namespace
 {
+    struct NativeAgent
+    {
+        std::wstring_view executable;
+        std::wstring_view label;
+    };
+
+    constexpr std::array NativeAgents{
+        NativeAgent{ L"codex", L"Codex CLI" },
+        NativeAgent{ L"claude", L"Claude Code" },
+        NativeAgent{ L"hermes", L"Hermes Agent" },
+        NativeAgent{ L"qwen", L"Qwen Code" },
+    };
+
+    struct ConnectionTarget
+    {
+        std::optional<OpenSsh::SavedHost> host;
+        std::wstring distribution;
+
+        std::wstring key() const
+        {
+            return host ? L"ssh:" + host->id : L"wsl:" + distribution;
+        }
+    };
+
+    struct ConnectionRow
+    {
+        TreeControls::TreeViewNode node;
+        ConnectionTarget target;
+        const NativeAgent* agent{ nullptr };
+    };
+
+    struct AgentProbeResult
+    {
+        std::vector<const NativeAgent*> agents;
+        winrt::hstring message;
+        bool retryable{ false };
+    };
+
+    struct AgentDiscovery
+    {
+        std::map<std::wstring, AgentProbeResult, std::less<>> results;
+        std::wstring pending;
+        std::shared_ptr<std::atomic<bool>> cancelled;
+
+        ~AgentDiscovery()
+        {
+            if (cancelled)
+            {
+                cancelled->store(true, std::memory_order_relaxed);
+            }
+        }
+    };
+
+    void _appendArgument(std::wstring& command, const std::wstring_view argument)
+    {
+        command.push_back(L' ');
+        til::append_quoted_argument(command, argument);
+    }
+
+    std::wstring _probeArguments(const ConnectionTarget& target)
+    {
+        std::wstring args{ L"probe-native-agents" };
+        if (const auto& host = target.host)
+        {
+            args.append(L" --ssh-host");
+            _appendArgument(args, host->address);
+            if (!host->usesOpenSshConfig)
+            {
+                args.append(L" --ssh-port ").append(std::to_wstring(host->port));
+                if (!host->username.empty())
+                {
+                    args.append(L" --ssh-user");
+                    _appendArgument(args, host->username);
+                }
+                if (!host->identityFile.empty())
+                {
+                    args.append(L" --ssh-identity-file");
+                    _appendArgument(args, host->identityFile);
+                }
+            }
+        }
+        else
+        {
+            args.append(L" --wsl-distro");
+            _appendArgument(args, target.distribution);
+        }
+        return args;
+    }
+
+    AgentProbeResult _readAgentProbe(const ConnectionTarget& target, const ::Microsoft::Terminal::WtaProcess::CaptureResult& capture)
+    {
+        const auto failed = [] { return AgentProbeResult{ {}, RS_(L"ConnectionAgentDiscoveryUnavailable"), true }; };
+        if (!capture.completed || capture.exitCode != 0)
+        {
+            return failed();
+        }
+
+        Json::Value root;
+        const std::unique_ptr<Json::CharReader> reader{ Json::CharReaderBuilder{}.newCharReader() };
+        const auto& output = capture.output;
+        if (!reader->parse(output.data(), output.data() + output.size(), &root, nullptr) || !root.isObject() || root["schemaVersion"] != 1)
+        {
+            return failed();
+        }
+        const auto& reported = root["target"];
+        const auto identity = winrt::to_string(target.host ? target.host->address : target.distribution);
+        if (!reported.isObject() || reported["kind"] != (target.host ? "ssh" : "wsl") || reported[target.host ? "host" : "distribution"] != identity)
+        {
+            return failed();
+        }
+        if (root["status"] == "auth_error")
+        {
+            return { {}, RS_(L"ConnectionAgentAuthenticationRequired"), true };
+        }
+        if (root["status"] == "unsupported")
+        {
+            return { {}, RS_(L"ConnectionAgentUnsupported"), true };
+        }
+        if (root["status"] == "transport_error" || root["status"] == "timeout")
+        {
+            return { {}, RS_(L"ConnectionAgentTargetUnreachable"), true };
+        }
+        const auto& available = root["agents"];
+        if (root["status"] != "ok" || !available.isObject())
+        {
+            return failed();
+        }
+
+        AgentProbeResult result;
+        for (const auto& agent : NativeAgents)
+        {
+            const auto& found = available[winrt::to_string(agent.executable)];
+            if (!found.isBool())
+            {
+                return failed();
+            }
+            if (found.asBool() && AgentPolicy::IsAgentAllowed(agent.executable))
+            {
+                result.agents.push_back(&agent);
+            }
+        }
+        if (result.agents.empty())
+        {
+            result.message = RS_(L"ConnectionAgentNoneFound");
+        }
+        return result;
+    }
+
+    safe_void_coroutine _runAgentProbe(Windows::UI::Core::CoreDispatcher dispatcher,
+                                       std::wstring wta,
+                                       ConnectionTarget target,
+                                       std::shared_ptr<std::atomic<bool>> cancelled,
+                                       std::function<void(AgentProbeResult)> completed)
+    {
+        co_await winrt::resume_background();
+        AgentProbeResult result;
+        try
+        {
+            const auto captured = ::Microsoft::Terminal::WtaProcess::RunWtaCapture(wta, _probeArguments(target), 16000, nullptr, false, cancelled.get(), true);
+            result = _readAgentProbe(target, captured);
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            result.message = RS_(L"ConnectionAgentDiscoveryUnavailable");
+            result.retryable = true;
+        }
+        co_await wil::resume_foreground(dispatcher);
+        if (!cancelled->load(std::memory_order_relaxed))
+        {
+            completed(std::move(result));
+        }
+    }
+
+    void _refreshAgentNodes(std::vector<ConnectionRow>& rows, const std::wstring_view key, const AgentDiscovery& discovery)
+    {
+        const auto found = std::ranges::find_if(rows, [&](const ConnectionRow& row) { return !row.agent && row.target.key() == key; });
+        if (found == rows.end())
+        {
+            return;
+        }
+        const auto parent = found->node;
+        const auto target = found->target;
+        std::erase_if(rows, [&](const ConnectionRow& row) { return row.agent && row.target.key() == key; });
+        parent.Children().Clear();
+
+        const auto result = discovery.results.find(key);
+        if (result != discovery.results.end())
+        {
+            for (const auto* agent : result->second.agents)
+            {
+                TreeControls::TreeViewNode child;
+                child.Content(box_value(hstring{ agent->label }));
+                parent.Children().Append(child);
+                rows.push_back({ child, target, agent });
+            }
+        }
+        const auto message = discovery.pending == key ? RS_(L"ConnectionAgentDiscovering") :
+                             result != discovery.results.end() ? result->second.message : hstring{};
+        if (!message.empty())
+        {
+            TreeControls::TreeViewNode child;
+            child.Content(box_value(message));
+            parent.Children().Append(child);
+        }
+        parent.IsExpanded(parent.Children().Size() != 0);
+    }
+
     bool _containsIgnoreCase(const std::wstring_view text, const std::wstring_view query) noexcept
     {
         if (query.empty())
@@ -265,7 +480,7 @@ namespace winrt::TerminalApp::implementation
         panel.RowDefinitions().Append(actionsRow);
 
         TextBlock title;
-        title.Text(RS_(L"SshHostsMenuItem"));
+        title.Text(RS_(L"ConnectionsTitle"));
         title.Margin({ 12, 8, 12, 8 });
         title.FontSize(16);
         title.FontWeight(Windows::UI::Text::FontWeights::SemiBold());
@@ -283,10 +498,12 @@ namespace winrt::TerminalApp::implementation
         tree.SelectionMode(TreeControls::TreeViewSelectionMode::Single);
         tree.CanDragItems(false);
         tree.CanReorderItems(false);
-        Automation::AutomationProperties::SetName(tree, RS_(L"SshHostsMenuItem"));
+        Automation::AutomationProperties::SetName(tree, RS_(L"ConnectionsTitle"));
 
         std::vector<OpenSsh::SavedHost> hosts;
-        auto hostNodes = std::make_shared<std::vector<std::pair<TreeControls::TreeViewNode, OpenSsh::SavedHost>>>();
+        std::vector<std::wstring> distributions;
+        auto rows = std::make_shared<std::vector<ConnectionRow>>();
+        auto discovery = std::make_shared<AgentDiscovery>();
         bool hostsLoaded = true;
         try
         {
@@ -302,9 +519,15 @@ namespace winrt::TerminalApp::implementation
             LOG_CAUGHT_EXCEPTION();
             hostsLoaded = false;
         }
+        try
+        {
+            distributions = ::Microsoft::Terminal::Wsl::EnumerateDistributions();
+            std::ranges::sort(distributions);
+        }
+        CATCH_LOG();
 
-        const auto populateTree = [tree, hosts, hostNodes](const hstring& filter) {
-            hostNodes->clear();
+        const auto populateTree = [tree, hosts, distributions, rows, discovery](const hstring& filter) {
+            rows->clear();
             tree.SelectedItem(nullptr);
             tree.RootNodes().Clear();
             std::map<std::wstring, TreeControls::TreeViewNode, std::less<>> groups;
@@ -336,40 +559,137 @@ namespace winrt::TerminalApp::implementation
                 node.Content(box_value(hstring{ host.name }));
                 const auto siblings = host.group.empty() ? tree.RootNodes() : groups.at(host.group).Children();
                 siblings.Append(node);
-                hostNodes->emplace_back(node, host);
+                rows->push_back({ node, ConnectionTarget{ host, {} } });
+            }
+            TreeControls::TreeViewNode wslGroup{ nullptr };
+            for (const auto& distribution : distributions)
+            {
+                if (!_containsIgnoreCase(distribution, filter) && !_containsIgnoreCase(L"WSL", filter))
+                {
+                    continue;
+                }
+                if (!wslGroup)
+                {
+                    wslGroup = TreeControls::TreeViewNode{};
+                    wslGroup.Content(box_value(hstring{ L"WSL" }));
+                    wslGroup.IsExpanded(true);
+                    tree.RootNodes().Append(wslGroup);
+                }
+                TreeControls::TreeViewNode node;
+                node.Content(box_value(hstring{ distribution }));
+                wslGroup.Children().Append(node);
+                rows->push_back({ node, ConnectionTarget{ std::nullopt, distribution } });
+            }
+            for (const auto& [key, result] : discovery->results)
+            {
+                _refreshAgentNodes(*rows, key, *discovery);
+            }
+            if (!discovery->pending.empty())
+            {
+                _refreshAgentNodes(*rows, discovery->pending, *discovery);
             }
         };
         populateTree(query);
         const winrt::weak_ref<TreeControls::TreeView> weakTree{ tree };
         auto selectedHost = std::make_shared<std::optional<OpenSsh::SavedHost>>();
-        tree.RegisterPropertyChangedCallback(TreeControls::TreeView::SelectedItemProperty(), [weakTree, hostNodes, selectedHost](auto&&, auto&&) {
-            selectedHost->reset();
-            if (const auto currentTree = weakTree.get())
+        const auto cancelOtherProbe = [rows, discovery](const std::wstring_view selectedKey) {
+            if (discovery->cancelled && discovery->pending != selectedKey)
             {
-                const auto node = currentTree.SelectedItem().try_as<TreeControls::TreeViewNode>();
-                const auto found = std::ranges::find(*hostNodes, node, [](const auto& entry) { return entry.first; });
-                if (found != hostNodes->end())
-                {
-                    *selectedHost = found->second;
-                }
+                discovery->cancelled->store(true, std::memory_order_relaxed);
+                discovery->cancelled.reset();
+                const auto previous = std::exchange(discovery->pending, {});
+                _refreshAgentNodes(*rows, previous, *discovery);
             }
-        });
-        const auto connectSelected = [weakThis{ get_weak() }, weakTree, selectedHost]() {
-            const auto currentTree = weakTree.get();
-            const auto host = *selectedHost;
-            if (!currentTree || !host)
+        };
+        const auto probeTarget = [weakThis{ get_weak() }, rows, discovery](const ConnectionTarget& target) {
+            const auto page = weakThis.get();
+            const auto key = target.key();
+            const auto cached = discovery->results.find(key);
+            if (!page || discovery->pending == key || (cached != discovery->results.end() && !cached->second.retryable))
             {
                 return;
             }
+            if (cached != discovery->results.end())
+            {
+                discovery->results.erase(cached);
+            }
+            if (target.host && !target.host->usesOpenSshConfig && target.host->identityFile.empty())
+            {
+                discovery->results.emplace(key, AgentProbeResult{ {}, RS_(L"ConnectionAgentAuthenticationRequired") });
+                _refreshAgentNodes(*rows, key, *discovery);
+                return;
+            }
+            const auto wta = page->_DetectWtaPath();
+            if (wta.empty())
+            {
+                discovery->results.emplace(key, AgentProbeResult{ {}, RS_(L"ConnectionAgentDiscoveryUnavailable"), true });
+                _refreshAgentNodes(*rows, key, *discovery);
+                return;
+            }
+            const auto cancelled = std::make_shared<std::atomic<bool>>(false);
+            discovery->cancelled = cancelled;
+            discovery->pending = key;
+            _refreshAgentNodes(*rows, key, *discovery);
+            _runAgentProbe(page->Dispatcher(), std::wstring{ wta }, target, cancelled,
+                           [weakRows = std::weak_ptr{ rows }, weakDiscovery = std::weak_ptr{ discovery }, key, cancelled](AgentProbeResult result) {
+                               const auto currentRows = weakRows.lock();
+                               const auto currentDiscovery = weakDiscovery.lock();
+                               if (currentRows && currentDiscovery && currentDiscovery->cancelled == cancelled)
+                               {
+                                   currentDiscovery->cancelled.reset();
+                                   currentDiscovery->pending.clear();
+                                   currentDiscovery->results.insert_or_assign(key, std::move(result));
+                                   _refreshAgentNodes(*currentRows, key, *currentDiscovery);
+                               }
+                           });
+        };
+        const auto openRow = [weakThis{ get_weak() }](const ConnectionRow& row) {
             if (const auto page = weakThis.get())
             {
-                page->_ConnectSshHost(*host);
+                const auto agent = row.agent ? row.agent->executable : std::wstring_view{};
+                if (!agent.empty() && !AgentPolicy::IsAgentAllowed(agent))
+                {
+                    return;
+                }
+                if (row.target.host)
+                {
+                    page->_ConnectSshHost(*row.target.host, agent);
+                }
+                else
+                {
+                    page->_ConnectWslDistribution(row.target.distribution, agent);
+                }
             }
         };
-        const auto connectFromRow = [weakThis{ get_weak() }, weakTree, hostNodes](const Windows::Foundation::IInspectable& originalSource) {
-            const auto page = weakThis.get();
+        const auto lookup = [rows](const TreeControls::TreeViewNode& node) -> std::optional<ConnectionRow> {
+            const auto found = std::ranges::find(*rows, node, &ConnectionRow::node);
+            return found == rows->end() ? std::nullopt : std::optional{ *found };
+        };
+        tree.RegisterPropertyChangedCallback(TreeControls::TreeView::SelectedItemProperty(), [weakTree, lookup, probeTarget, cancelOtherProbe, selectedHost](auto&&, auto&&) {
+            selectedHost->reset();
+            if (const auto currentTree = weakTree.get())
+            {
+                const auto row = lookup(currentTree.SelectedItem().try_as<TreeControls::TreeViewNode>());
+                cancelOtherProbe(row ? row->target.key() : std::wstring{});
+                if (row && !row->agent)
+                {
+                    *selectedHost = row->target.host;
+                    probeTarget(row->target);
+                }
+            }
+        });
+        const auto connectSelected = [weakTree, lookup, openRow]() {
+            if (const auto currentTree = weakTree.get())
+            {
+                if (const auto row = lookup(currentTree.SelectedItem().try_as<TreeControls::TreeViewNode>()))
+                {
+                    openRow(*row);
+                }
+            }
+        };
+        const auto connectFromRow = [weakTree, lookup, openRow](const Windows::Foundation::IInspectable& originalSource) {
             const auto currentTree = weakTree.get();
-            if (!page || !currentTree)
+            if (!currentTree)
             {
                 return false;
             }
@@ -379,14 +699,12 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto item = source.try_as<TreeControls::TreeViewItem>())
                 {
-                    const auto node = currentTree.NodeFromContainer(item);
-                    const auto host = std::ranges::find(*hostNodes, node, [](const auto& entry) { return entry.first; });
-                    if (host == hostNodes->end())
+                    if (const auto row = lookup(currentTree.NodeFromContainer(item)))
                     {
-                        return false;
+                        openRow(*row);
+                        return true;
                     }
-                    page->_ConnectSshHost(host->second);
-                    return true;
+                    return false;
                 }
             }
             return false;
@@ -408,16 +726,16 @@ namespace winrt::TerminalApp::implementation
         noMatches.Text(RS_(L"SshHostsNoMatches"));
         noMatches.Margin({ 12, 8, 12, 8 });
         noMatches.TextWrapping(TextWrapping::Wrap);
-        noMatches.Visibility(!query.empty() && hostNodes->empty() ? Visibility::Visible : Visibility::Collapsed);
+        noMatches.Visibility(!query.empty() && rows->empty() ? Visibility::Visible : Visibility::Collapsed);
         Automation::AutomationProperties::SetLiveSetting(noMatches, Automation::Peers::AutomationLiveSetting::Polite);
         Grid::SetRow(noMatches, 2);
         panel.Children().Append(tree);
         panel.Children().Append(noMatches);
-        search.TextChanged([populateTree, selectedHost, hostNodes, noMatches](const Windows::Foundation::IInspectable& sender, auto&&) {
+        search.TextChanged([populateTree, selectedHost, rows, noMatches](const Windows::Foundation::IInspectable& sender, auto&&) {
             selectedHost->reset();
             const auto filter = sender.as<TextBox>().Text();
             populateTree(filter);
-            noMatches.Visibility(!filter.empty() && hostNodes->empty() ? Visibility::Visible : Visibility::Collapsed);
+            noMatches.Visibility(!filter.empty() && rows->empty() ? Visibility::Visible : Visibility::Collapsed);
         });
         TextBlock status;
         status.TextWrapping(TextWrapping::Wrap);
@@ -607,7 +925,71 @@ namespace winrt::TerminalApp::implementation
         SshHostsDock().Children().Append(panel);
     }
 
-    void TerminalPage::_ConnectSshHost(const OpenSsh::SavedHost& host)
+    bool TerminalPage::_OpenConnectionTab(const std::wstring_view commandline, const std::wstring_view title)
+    {
+        using namespace winrt::Microsoft::Terminal::Settings::Model;
+        NewTerminalArgs args;
+        args.Commandline(hstring{ commandline });
+        args.TabTitle(hstring{ title });
+        args.StartingDirectory(L"%USERPROFILE%");
+        args.Elevate(false);
+
+        const auto azureType = Microsoft::Terminal::TerminalConnection::AzureConnection::ConnectionType();
+        if (const auto profile = _settings.GetProfileForArgs(args);
+            profile && profile.ConnectionType() == azureType && Microsoft::Terminal::TerminalConnection::AzureConnection::IsAzureConnectionAvailable())
+        {
+            for (const auto& candidate : _settings.ActiveProfiles())
+            {
+                if (candidate.ConnectionType() != azureType)
+                {
+                    args.Profile(::Microsoft::Console::Utils::GuidToString(candidate.Guid()));
+                    break;
+                }
+            }
+            if (args.Profile().empty())
+            {
+                return false;
+            }
+        }
+        return _OpenNewTab(args) == S_OK;
+    }
+
+    void TerminalPage::_ConnectWslDistribution(const std::wstring_view distribution, const std::wstring_view agent)
+    {
+        try
+        {
+            std::wstring systemDirectory;
+            THROW_IF_FAILED(wil::GetSystemDirectoryW<std::wstring>(systemDirectory));
+            std::wstring command;
+            til::append_quoted_argument(command, systemDirectory.append(L"\\wsl.exe"));
+            command.append(L" --distribution");
+            _appendArgument(command, distribution);
+            command.append(L" --cd ~");
+            auto title = std::wstring{ distribution };
+            if (!agent.empty())
+            {
+                command.append(L" --exec sh -lc");
+                _appendArgument(command, std::wstring{ L"exec " }.append(agent));
+                title.append(L" - ").append(agent);
+            }
+            if (_OpenConnectionTab(command, title))
+            {
+                return;
+            }
+        }
+        CATCH_LOG();
+
+        if (const auto presenter = _dialogPresenter.get())
+        {
+            ContentDialog dialog;
+            dialog.Title(box_value(RS_(L"ConnectionsTitle")));
+            dialog.Content(box_value(RS_(L"ConnectionTerminalLaunchFailed")));
+            dialog.CloseButtonText(RS_(L"SshHostsClose"));
+            presenter.ShowDialog(dialog);
+        }
+    }
+
+    void TerminalPage::_ConnectSshHost(const OpenSsh::SavedHost& host, const std::wstring_view agent)
     {
         hstring error;
         try
@@ -623,7 +1005,7 @@ namespace winrt::TerminalApp::implementation
             else
             {
                 std::error_code identityError;
-                if (!current->identityFile.empty() && !std::filesystem::is_regular_file(std::filesystem::path{ current->identityFile }, identityError))
+                if (!current->usesOpenSshConfig && !current->identityFile.empty() && !std::filesystem::is_regular_file(std::filesystem::path{ current->identityFile }, identityError))
                 {
                     error = RS_(L"SshHostsIdentityUnavailable");
                 }
@@ -634,33 +1016,12 @@ namespace winrt::TerminalApp::implementation
                 }
                 if (error.empty())
                 {
-                    using namespace winrt::Microsoft::Terminal::Settings::Model;
-                    NewTerminalArgs args;
-                    args.Commandline(OpenSsh::BuildCommandline(executable, *current));
-                    args.TabTitle(current->name);
-                    args.StartingDirectory(L"%USERPROFILE%");
-                    args.Elevate(false);
-
-                    const auto azureType = Microsoft::Terminal::TerminalConnection::AzureConnection::ConnectionType();
-                    if (const auto profile = _settings.GetProfileForArgs(args);
-                        profile && profile.ConnectionType() == azureType && Microsoft::Terminal::TerminalConnection::AzureConnection::IsAzureConnectionAvailable())
+                    auto title = current->name;
+                    if (!agent.empty())
                     {
-                        bool foundFallback = false;
-                        for (const auto& candidate : _settings.ActiveProfiles())
-                        {
-                            if (candidate.ConnectionType() != azureType)
-                            {
-                                args.Profile(::Microsoft::Console::Utils::GuidToString(candidate.Guid()));
-                                foundFallback = true;
-                                break;
-                            }
-                        }
-                        if (!foundFallback)
-                        {
-                            error = RS_(L"SshHostsLaunchFailed");
-                        }
+                        title.append(L" - ").append(agent);
                     }
-                    if (error.empty() && _OpenNewTab(args) != S_OK)
+                    if (!_OpenConnectionTab(OpenSsh::BuildCommandline(executable, *current, agent), title))
                     {
                         error = RS_(L"SshHostsLaunchFailed");
                     }
