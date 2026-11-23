@@ -15,6 +15,8 @@ using namespace winrt;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 
+using winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings;
+
 namespace OpenSsh = ::Microsoft::Terminal::OpenSsh;
 namespace TreeControls = winrt::Microsoft::UI::Xaml::Controls;
 

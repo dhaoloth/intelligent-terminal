@@ -117,6 +117,38 @@ namespace Microsoft::Terminal::OpenSsh
                    std::ranges::all_of(alias, _isSimpleNameChar) && alias.find_first_not_of(L'.') != std::wstring_view::npos;
         }
 
+        bool _matchesHostPattern(const std::wstring_view alias, const std::wstring_view pattern) noexcept
+        {
+            std::size_t aliasIndex = 0;
+            std::size_t patternIndex = 0;
+            std::size_t star = std::wstring_view::npos;
+            std::size_t retry = 0;
+            while (aliasIndex < alias.size())
+            {
+                if (patternIndex < pattern.size() && pattern[patternIndex] == L'*')
+                {
+                    star = patternIndex++;
+                    retry = aliasIndex;
+                }
+                else if (patternIndex < pattern.size() &&
+                         (pattern[patternIndex] == L'?' || alias[aliasIndex] == pattern[patternIndex]))
+                {
+                    ++aliasIndex;
+                    ++patternIndex;
+                }
+                else if (star != std::wstring_view::npos)
+                {
+                    patternIndex = star + 1;
+                    aliasIndex = ++retry;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return pattern.substr(patternIndex).find_first_not_of(L'*') == std::wstring_view::npos;
+        }
+
         wil::unique_handle _lockCatalog(std::filesystem::path path)
         {
             path += L".lock";
@@ -274,37 +306,44 @@ namespace Microsoft::Terminal::OpenSsh
                     continue;
                 }
                 line.remove_prefix(valueStart);
+                std::vector<std::wstring_view> patterns;
                 while (!line.empty() && !line.starts_with(L'#'))
                 {
                     const auto whitespace = L" \t\r";
-                    const auto quoted = line.starts_with(L'"');
+                    const auto quote = line.front();
+                    const auto quoted = quote == L'"' || quote == L'\'';
                     auto tokenEnd = line.find_first_of(whitespace);
                     if (quoted)
                     {
-                        const auto closing = line.find(L'"', 1);
+                        const auto closing = line.find(quote, 1);
                         if (closing == std::wstring_view::npos)
                         {
+                            patterns.clear();
                             break;
                         }
                         tokenEnd = closing + 1;
                         if (tokenEnd < line.size() && std::wstring_view{ whitespace }.find(line[tokenEnd]) == std::wstring_view::npos)
                         {
+                            patterns.clear();
                             break;
                         }
                     }
-                    const auto alias = quoted ? line.substr(1, tokenEnd - 2) : line.substr(0, tokenEnd);
-                    if (_isConfigAlias(alias) && std::ranges::none_of(aliases, [&](const auto& value) {
-                            return til::equals_insensitive_ascii(value, alias);
-                        }))
-                    {
-                        aliases.emplace_back(alias);
-                    }
+                    patterns.push_back(quoted ? line.substr(1, tokenEnd - 2) : line.substr(0, tokenEnd));
                     const auto next = tokenEnd == std::wstring_view::npos ? tokenEnd : line.find_first_not_of(whitespace, tokenEnd);
                     if (next == std::wstring_view::npos)
                     {
                         break;
                     }
                     line.remove_prefix(next);
+                }
+                for (const auto alias : patterns)
+                {
+                    if (_isConfigAlias(alias) &&
+                        std::ranges::none_of(patterns, [&](const auto pattern) { return pattern.starts_with(L'!') && _matchesHostPattern(alias, pattern.substr(1)); }) &&
+                        std::ranges::none_of(aliases, [&](const auto& value) { return value == alias; }))
+                    {
+                        aliases.emplace_back(alias);
+                    }
                 }
             }
         }
@@ -370,7 +409,7 @@ namespace Microsoft::Terminal::OpenSsh
         for (const auto& alias : aliases)
         {
             if (!_isConfigAlias(alias) || std::ranges::any_of(hosts, [&](const auto& host) {
-                    return host.usesOpenSshConfig && til::equals_insensitive_ascii(host.address, alias);
+                    return host.usesOpenSshConfig && host.address == alias;
                 }))
             {
                 continue;
