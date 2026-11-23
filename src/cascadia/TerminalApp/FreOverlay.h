@@ -60,20 +60,11 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateWelcomeLayout(const winrt::Windows::Foundation::Size& viewport);
 
-        // Things that can block FRE completion, in priority order (lower value
-        // = higher priority). Only the highest-priority problem is surfaced in
-        // the bottom-left error area at a time (see _ShowProblem).
-        //
-        // WinGet install failures are not in this enum because they carry
-        // richer structured state (package + failure kind + HRESULT + installer
-        // exit code); those go through _ShowWingetProblem instead, which uses
-        // FreWingetPackage + FreWingetFailureKind below.
+        // Problems that can block FRE completion.
         enum class FreProblemKind
         {
-            WingetMissing = 0, // hard prerequisite — winget itself unavailable
-            ShellIntegrationExecutionPolicy = 1, // optional feature — error detection blocked by PowerShell execution policy
-            ShellIntegration = 2, // optional feature — error detection (generic install failure)
-            Hooks = 3, // optional feature — session management
+            WingetMissing = 0,
+            Hooks = 1,
         };
 
         // Which winget-installed prerequisite a failure refers to. Used by
@@ -125,15 +116,6 @@ namespace winrt::TerminalApp::implementation
         // notification, re-enables editing, and parks focus on the help link.
         void _FinalizeProblemDisplay(const std::wstring& url);
 
-        enum class ErrorDetectionMode : int32_t
-        {
-            Detect = 0,
-            DetectAndFix = 1,
-            Off = 2,
-        };
-
-        ErrorDetectionMode _CurrentErrorDetectionMode();
-        void _SetErrorDetectionMode(ErrorDetectionMode mode);
         void _UpdateIllustrationTheme();
         void _UpdateSettingsFormWidth();
 
@@ -198,8 +180,7 @@ namespace winrt::TerminalApp::implementation
         {
             Setup = 0,
             Agent = 1,
-            ErrorDetection = 2,
-            Sessions = 3,
+            Sessions = 2,
         };
 
         enum class ProgressResult

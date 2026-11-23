@@ -637,6 +637,24 @@
     <value>Sidebar</value>
     <comment>An option to choose from for the "tab layout" setting. When selected, tabs run down the left side of the window in a resizable sidebar. Use the same translation as FreOverlay_TabModeSidebar in TerminalApp.</comment>
   </data>
+  <data name="Globals_ImportTerminalAppearance.Header" xml:space="preserve">
+    <value>Windows Terminal appearance</value>
+    <comment>{Locked="Windows Terminal"}</comment>
+  </data>
+  <data name="Globals_ImportTerminalAppearance.HelpText" xml:space="preserve">
+    <value>Copy the default profile’s font, colors, cursor, and text styles from a Windows Terminal settings.json file.</value>
+    <comment>{Locked="Windows Terminal","settings.json"}</comment>
+  </data>
+  <data name="Globals_ImportTerminalAppearanceButton.Content" xml:space="preserve">
+    <value>Choose settings file</value>
+  </data>
+  <data name="ImportTerminalAppearanceSuccess" xml:space="preserve">
+    <value>Appearance copied to profile defaults. Select Save to apply it.</value>
+  </data>
+  <data name="ImportTerminalAppearanceError" xml:space="preserve">
+    <value>Could not import appearance. Choose a valid Windows Terminal settings.json file.</value>
+    <comment>{Locked="Windows Terminal","settings.json"}</comment>
+  </data>
   <data name="Globals_Theme.Header" xml:space="preserve">
     <value>Application Theme</value>
     <comment>Header for a control to choose the theme colors used in the app.</comment>
@@ -828,6 +846,18 @@ Alt+Shift+B open a new agent tab.</value>
   <data name="AIAgents_SessionManagement.HelpText" xml:space="preserve">
     <value>Track which agents are running and which need your attention.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Description for the Sessions setting. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="AIAgents_InstallShellIntegration.Content" xml:space="preserve">
+    <value>Install shell integration</value>
+    <comment>Button under Agent Session Management that manually installs local shell integration for PowerShell, Bash, and WSL. It does not configure remote SSH hosts.</comment>
+  </data>
+  <data name="AIAgents_InstallShellIntegration.AutomationProperties.Name" xml:space="preserve">
+    <value>Install shell integration</value>
+    <comment>Accessible name for the button that manually installs supported local shell integration.</comment>
+  </data>
+  <data name="AIAgents_InstallShellIntegration.HelpText" xml:space="preserve">
+    <value>Install shell integration for local PowerShell, Bash, and WSL profiles.</value>
+    <comment>Help text for the explicit shell integration installer. Remote SSH hosts are not configured.</comment>
   </data>
   <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Token usage</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Show remaining context and session cost when available</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>

@@ -1,7 +1,7 @@
 # State
 
 Task: Adapt Intelligent Terminal into a Windows SSH manager and agent workspace.
-Status: The SSH manager checkpoint is published. Native WSL and SSH discovery and TUI launch are wired. Windows runtime checks are open.
+Status: The SSH manager and native agent discovery checkpoint is published on `dev/dhaoloth/ssh-agent-workspace`. Windows CI and runtime verification are open.
 Scope: Windows terminal and SSH management, local agents in WSL, and agents on remote SSH hosts.
 
 ## Verified
@@ -12,8 +12,11 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - The working tree adds an SSH host tree docked on the left of the workspace, separate from tab selection. Host activation uses OpenSSH and ordinary terminal tabs. The pane exposes host creation, editing, and confirmed removal. The properties form keeps its draft separate from tree selection. OpenSSH prompts for passwords interactively.
 - Host search matches name, address, or group and retains each matching host's folder ancestry. The query persists across tab changes and catalog refreshes.
 - Explicit import previews literal aliases from the top-level Windows OpenSSH configuration files. Import writes host records atomically, skips aliases already in the catalog, and leaves existing OpenSSH settings authoritative for imported aliases. An offline OpenSSH configuration check confirmed the alias launch retains the configured port, user, jump host, identity, and host-key policy.
+- The saved host editor accepts a literal OpenSSH jump alias for manually configured destinations. Shell tabs, native agent tabs, and discovery all pass the same jump alias. An offline `ssh -G` fixture verified destination and bastion configuration resolution.
 - The connection tree includes registered WSL distributions. Selecting a distribution or saved SSH host invokes bounded native agent discovery. Detected Codex, Claude Code, Hermes, and Qwen agents get child rows that launch the native CLI in the selected environment. Source and synthetic shell tests cover target routing and probe output. No real WSL or SSH target was used for those tests.
-- The working tree stops creating new Azure Cloud Shell and Visual Studio profiles, retains compatible saved profiles, removes automatic Copilot onboarding and default selection, and removes the command palette's `?` delegation path and shortcut.
+- The fork stops creating new Azure Cloud Shell and Visual Studio profiles, retains compatible saved profiles, removes automatic Copilot onboarding and default selection, and removes the command palette's `?` delegation path and shortcut.
+- Terminal-managed error analysis and the built-in `/fix` command are removed from the active product paths. Legacy settings remain readable. Shell integration for command history and session signals is available as an explicit installation action under AI Agents settings.
+- Appearance settings can import portable fields from a chosen Windows Terminal `settings.json` into the fork's profile defaults. A separate GitHub Actions workflow builds an unsigned x64 MSIX using the existing package script.
 - WSL checks covered source wiring, project and resource XML, and diff whitespace. Offline OpenSSH configuration checks covered interactive password and key modes, IPv6, key paths with spaces, and host-key verification settings.
 
 ## Decisions
@@ -30,10 +33,10 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 ## Open
 
 - Validate the Windows build, both tab layouts, narrow windows, keyboard interaction, host persistence, terminal launch and authentication, and legacy profile and onboarding migrations.
-- Extend host management with broader import support, SSH agent and key management, proxies, jump hosts, tunnels, reconnect, and graphical SFTP. The first OpenSSH import reads literal `Host` aliases in the top-level files. Included files and wildcard patterns are open.
+- Extend host management with broader import support, SSH agent and key management, editable proxy and multi-hop settings, tunnels, reconnect, and graphical SFTP. The first OpenSSH import reads literal `Host` aliases in the top-level files. Included files and wildcard patterns are open.
 - Validate discovery and native TUI launch for the four CLIs on authorized WSL and SSH targets. Interactive SSH password login remains available for terminals. Password-only hosts need an auth bridge before background discovery can work with that login method.
 - Add the shared session panel, provider-supported usage and subagent views, and unavailable states.
-- Complete appearance import and removal of terminal error analysis and `/fix`.
+- Verify appearance import, diagnostics removal, and explicit shell integration setup on Windows.
 
 ## Evidence
 
@@ -42,6 +45,7 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - Current implementation: `src/cascadia/TerminalApp/TerminalPage.SshHosts.cpp` and `src/cascadia/TerminalApp/SshHostStore.cpp`.
 - Technical concept: `doc/specs/ssh-agent-workspace.md`, based on Astra Medium's independent source review.
 - Native discovery: `tools/wta/src/cli/native_probe.rs` and `src/cascadia/inc/WslDistributions.h`.
+- [Windows PR CI run for `692d78655`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45180163240): Rust build and unit tests passed. C++ compilation reported WinRT namespace and const-access errors, addressed in `66110a55a`.
 - Intelligent Terminal: `src/cascadia/TerminalSettingsModel/SshHostGenerator.cpp`, `src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp`, `src/cascadia/TerminalSettingsEditor/Profiles_Base.xaml`, `src/cascadia/TerminalApp/TabStrip.xaml`, and `tools/wta/src/agent_check.rs`.
 - Termora: `../termora/src/main/kotlin/app/termora/tree/NewHostTree.kt`, `../termora/src/main/kotlin/app/termora/plugin/internal/ssh/SSHHostOptionsPane.kt`, and `../termora/src/main/kotlin/app/termora/transfer/internal/sftp/SFTPTransferProtocolProvider.kt`.
 

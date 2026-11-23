@@ -47,12 +47,11 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $invoke = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))' -TelemetryFixturePath '$($script:telemetryFixture.Replace("'", "''"))'"
         $command = 'pwsh -NoProfile -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invoke))
-        $script:readyResults = @{}
         $script:slashFailure = $null
         $trace = Start-TestTelemetryTrace -Directory (Join-Path $script:root 'capture')
         try {
             Stop-StaleItInstances -App $script:target
-            foreach ($name in @('AllowAutoFix', 'AllowedAgents', 'AllowCustomAgents')) {
+            foreach ($name in @('AllowedAgents', 'AllowCustomAgents')) {
                 Set-TelemetryPolicy -Transaction $script:policyTransaction -Name $name -Value $null
             }
             $script:app = Start-Terminal -Package Dev -PassFre $true -State @{
@@ -61,7 +60,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                 sidebarLayoutMigrationCompleted = $true
             } -Settings @{
                 acpAgent = 'custom:telemetry-fixture'; acpCustomCommand = $command; acpModel = ''
-                delegateAgent = 'copilot'; autoFixEnabled = $false; autoErrorDetectionEnabled = $true
+                delegateAgent = 'copilot'
                 tabLayout = 'horizontal'; 'agentPane.yoloMode' = $false
             }
             $script:app.Launched | Should -BeTrue
@@ -89,128 +88,28 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             }
             catch { $script:slashFailure = $_ }
 
-            $tabId = Resolve-AgentOwnerTabId -App $script:app -OwnerPaneSessionId $script:shell.session_id
-            foreach ($hostEnabled in @($false, $true)) {
-                $listener = $null
-                try {
-                    $listener = Start-WtEventListener -App $script:app -WaitForReady
-                    Initialize-LogOffsets -App $script:app | Out-Null
-                    $beforeToggle = @(Get-Content -LiteralPath $script:requestLog | Select-String '\|session/prompt\|').Count
-                    if ([bool](Get-WtSettingsObject -App $script:app).autoFixEnabled -ne $hostEnabled) {
-                        Set-WtSetting -App $script:app -Key autoFixEnabled -Value $hostEnabled | Out-Null
-                        Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                            $_.method -eq 'agent_config_changed' -and $null -ne $_.params.autofix_enabled -and
-                            $_.params.autofix_enabled -eq $hostEnabled -and -not $_.params.tab_id
-                        } | Out-Null
-                    }
-                    if (-not $hostEnabled) {
-                        # Seed a real pending old error while disabled; neither repeated
-                        # readiness nor enabling the setting may submit it later.
-                        $oldError = 'telemetry-old-' + [guid]::NewGuid().ToString('N')
-                        Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id -Command "throw '$oldError'" | Out-Null
-                        Wait-WtCommandFailure -Listener $listener -PaneId $script:shell.session_id -TimeoutSec 20 | Out-Null
-                        Wait-Until -TimeoutSec 20 -Because 'the helper classifies an error while auto-suggest is disabled' -Condition {
-                            (Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart) -match 'surfacing Detected pill'
-                        } | Out-Null
-                    }
-
-                    $responses = @()
-                    foreach ($repeat in 1..2) {
-                        Stop-WtEventListener -Listener $listener
-                        $listener = Start-WtEventListener -App $script:app -WaitForReady
-                        $wrongTab = [guid]::NewGuid().ToString('B')
-                        Invoke-WtCli -App $script:app -Arguments @('publish', (@{
-                            method = 'agent_status'; params = @{ state = 'connected'; tab_id = $wrongTab; host_catalog_ready = $true }
-                        } | ConvertTo-Json -Depth 4 -Compress)) | Out-Null
-                        $marker = 'TELEMETRY_READY_REFRESH_' + [guid]::NewGuid().ToString('N')
-                        Send-AgentPrompt -App $script:app -PaneSessionId $script:agent.PaneSessionId -Text $marker | Out-Null
-                        $response = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                            $_.method -eq 'agent_config_changed' -and $_.params.tab_id -eq $tabId -and
-                            $_.params.window_id -eq [string]$script:app.WindowId -and
-                            $null -ne $_.params.autofix_enabled
-                        }
-                        ($response.params.autofix_enabled -is [bool]) | Should -BeTrue
-                        $response.params.autofix_enabled | Should -Be $hostEnabled
-                        $response.params.autofix_policy_state | Should -BeIn @('notConfigured', 'enabled', 'disabled')
-                        Wait-Until -TimeoutSec 20 -Because 'the fixture completes this exact refresh prompt' -Condition {
-                            (Get-Content -LiteralPath $script:requestLog -Raw) -match ([regex]::Escape("telemetry-ready-complete|$marker"))
-                        } | Out-Null
-                        Start-Sleep -Seconds 1
-                        @(Get-Content -LiteralPath $script:requestLog | Select-String '\|session/prompt\|').Count |
-                            Should -Be ($beforeToggle + $repeat) -Because 'neither enabling Autofix nor readiness may replay the old terminal error'
-                        @(Get-WtEvents -Listener $listener -Predicate {
-                            $_.method -eq 'agent_config_changed' -and $_.params.tab_id -eq $wrongTab
-                        }) | Should -HaveCount 0
-                        $responses += $response
-                        Get-WtEvents -Listener $listener | ConvertTo-Json -Depth 20 |
-                            Set-Content -LiteralPath (Join-Path $script:root "ready-$hostEnabled-$repeat-protocol.json")
-                    }
-                    # Use a fresh observer so the old failure cannot satisfy this
-                    # completion check. ETW then verifies the downstream flag.
-                    Stop-WtEventListener -Listener $listener
-                    $listener = Start-WtEventListener -App $script:app -WaitForReady
-                    Initialize-LogOffsets -App $script:app | Out-Null
-                    Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id `
-                        -Command ("throw 'telemetry-new-" + [guid]::NewGuid().ToString('N') + "'") | Out-Null
-                    Wait-WtCommandFailure -Listener $listener -PaneId $script:shell.session_id -TimeoutSec 20 | Out-Null
-                    Wait-Until -TimeoutSec 20 -Because 'the helper handles this new failure with the current effective flag' -Condition {
-                        if ($hostEnabled) {
-                            @(Select-String -LiteralPath $script:requestLog -Pattern '\|session/prompt\|').Count -eq ($beforeToggle + 3)
-                        }
-                        else {
-                            (Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart) -match 'surfacing Detected pill'
-                        }
-                    } | Out-Null
-                    $script:readyResults[[string]$hostEnabled] = @{ Responses = $responses; Error = $null }
-                }
-                catch { $script:readyResults[[string]$hostEnabled] = @{ Error = $_ } }
-                finally {
-                    Get-ItLogText -App $script:app -Name "wta-main_helper-$($script:agent.HelperProcessId).log" -SinceStart |
-                        Set-Content -LiteralPath (Join-Path $script:root "ready-$hostEnabled-helper.log")
-                    if ($listener) {
-                        Get-WtEvents -Listener $listener | ConvertTo-Json -Depth 20 |
-                            Set-Content -LiteralPath (Join-Path $script:root "ready-$hostEnabled-final-protocol.json")
-                        Stop-WtEventListener -Listener $listener
-                    }
-                }
-            }
             Invoke-TelemetryPhase -Name conversation -Action { Invoke-TelemetryConversation }
-            foreach ($decision in @('Run', 'Insert', 'Reject')) {
-                Invoke-TelemetryPhase -Name "offer-$decision" -Action { Invoke-TelemetryOffer -Decision $decision }
-            }
-            if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
-                foreach ($allowed in @($false, $true)) {
-                    Invoke-TelemetryPhase -Name "autofix-policy-$allowed" -Action { Invoke-TelemetryAutoFixPolicy -Allowed $allowed }
-                }
-            }
-            Set-TelemetryPolicy -Transaction $script:policyTransaction -Name AllowAutoFix -Value $null
             Invoke-TelemetryPhase -Name second-window -Action { Invoke-TelemetrySecondWindow }
             @(Get-WtWindows -App $script:app) | Should -HaveCount 1 -Because 'later settings changes must only reach the retained primary window'
             Invoke-TelemetryPhase -Name provider-changes -Action { Invoke-TelemetryProviderChanges }
-            foreach ($allowed in @($false, $true)) {
-                Invoke-TelemetryPhase -Name "cold-autofix-policy-$allowed" -Action {
-                    Invoke-TelemetryColdAutoFixPolicy -Allowed $allowed -Command $command
-                }
-            }
             if ($script:app) {
                 Stop-TelemetryOwnedTerminal -App $script:app
                 $script:app = $null
             }
-            Set-TelemetryPolicy -Transaction $script:policyTransaction -Name AllowAutoFix -Value $null
             Invoke-TelemetryPhase -Name startup-inventory -Action {
                 Invoke-TelemetryStartupCase -Name inventory -Settings @{
                     acpAgent = 'custom:pwsh'; acpCustomCommand = $command
                     acpCustomCommands = @($command, "$command -duplicate", 'cmd.exe /d /c exit 0')
                     delegateAgent = 'custom:cmd'; delegateCustomCommand = 'cmd.exe /d /c exit 0'
                     delegateCustomCommands = @('cmd.exe /d /c exit 0', 'pwsh -NoProfile -Command exit')
-                    tabLayout = 'vertical'; autoFixEnabled = $false
+                    tabLayout = 'vertical'
                 }
             }
             Invoke-TelemetryPhase -Name startup-no-agent -Action {
                 Invoke-TelemetryStartupCase -Name noAgent -Settings @{
                     acpAgent = ''; acpCustomCommand = ''; acpCustomCommands = @()
                     delegateAgent = ''; delegateCustomCommand = ''; delegateCustomCommands = @()
-                    tabLayout = 'horizontal'; autoFixEnabled = $false
+                    tabLayout = 'horizontal'
                 }
             }
             Invoke-TelemetryPhase -Name startup-policy-blocked -Action {
@@ -222,7 +121,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                 Invoke-TelemetryStartupCase -Name policyBlocked -Settings @{
                     acpAgent = 'custom:pwsh'; acpCustomCommand = $command; acpCustomCommands = @('cmd.exe /d /c exit 0')
                     delegateAgent = 'custom:cmd'; delegateCustomCommand = 'cmd.exe /d /c exit 0'; delegateCustomCommands = @($command)
-                    tabLayout = 'vertical'; autoFixEnabled = $false
+                    tabLayout = 'vertical'
                 }
             }
             Invoke-TelemetryPhase -Name startup-policy-allowlist -Action {
@@ -234,7 +133,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                 Invoke-TelemetryStartupCase -Name policyAllowlist -Settings @{
                     acpAgent = 'custom:pwsh'; acpCustomCommand = $command; acpCustomCommands = @()
                     delegateAgent = 'claude'; delegateCustomCommand = ''; delegateCustomCommands = @()
-                    tabLayout = 'horizontal'; autoFixEnabled = $false
+                    tabLayout = 'horizontal'
                 }
             }
             Invoke-TelemetryPhase -Name startup-not-enrolled -Action {
@@ -255,7 +154,7 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
                 Invoke-TelemetryStartupCase -Name notEnrolled -Settings @{
                     acpAgent = ''; acpCustomCommand = ''; acpCustomCommands = @()
                     delegateAgent = ''; delegateCustomCommand = ''; delegateCustomCommands = @()
-                    tabLayout = 'vertical'; autoFixEnabled = $false
+                    tabLayout = 'vertical'
                 }
                 $loaded = Get-WtStateObject -App $script:app
                 $loaded.PSObject.Properties.Name | Should -Not -Contain 'featureRolloutId'
@@ -269,7 +168,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             -IncludeEventName @('AppCreated', 'AgentProviderConfigured', 'CustomAgentConfigured', 'SidebarStateOnLaunch',
                 'AgentSlashCommandUsed', 'SlashCommandInvoked', 'SessionBecameInteractive', 'UserInteract',
                 'ConnectionCreated', 'AcpNewSessionComplete', 'AgentPromptSent', 'AgentResponseComplete',
-                'ErrorDetected', 'ErrorFixOffered', 'ErrorFixAccepted', 'ErrorFixRunStarted', 'ErrorFixRunResult',
                 'AgentProviderChanged', 'JsonSettingsChanged', 'AgentSessionStarted'))
         Initialize-TelemetryPhaseClock -CaptureDirectory $trace.Directory
         @($script:ownedPids) | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:root 'owned-processes.json')
@@ -362,26 +260,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         $created[0].Fields.SidebarRolloutAssignment | Should -Be 'Horizontal'
     }
 
-    It 'Connected helpers receive current native Autofix configuration' -ForEach @(
-        @{ HostEnabled = $false }, @{ HostEnabled = $true }
-    ) {
-        $result = $script:readyResults[[string]$HostEnabled]
-        if ($result.Error) { throw $result.Error }
-        @($result.Responses) | Should -HaveCount 2
-        $detected = @($script:records | Where-Object {
-            $_.Provider -eq '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b' -and $_.Name -eq 'ErrorDetected' -and
-            $_.Fields.PaneId -eq $script:shell.session_id -and
-            $_.Fields.AllowAutoFixPolicy -eq $result.Responses[-1].params.autofix_policy_state -and
-            $_.Fields.AutoFixEnabled -in $(if ($HostEnabled) { @('true', '1') } else { @('false', '0') })
-        })
-        $detected.Count | Should -BeGreaterThan 0
-        foreach ($record in $detected) {
-            $record.Fields.AllowAutoFixPolicy | Should -Be $result.Responses[-1].params.autofix_policy_state
-            $record.Types.AutoFixEnabled | Should -Match 'Boolean$'
-            $record.Types.AllowAutoFixPolicy | Should -Match 'AnsiString$'
-        }
-    }
-
     It 'Interactive sessions and connections expose local adoption sources' {
         $interactive = @($script:records | Where-Object { $_.ProcessId -eq $script:primaryAppPid -and $_.Name -eq 'SessionBecameInteractive' })
         $connections = @($script:records | Where-Object { $_.ProcessId -eq $script:primaryAppPid -and $_.Name -eq 'ConnectionCreated' })
@@ -441,7 +319,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             [guid]::Parse($record.Fields.SessionId) | Should -Not -Be ([guid]::Empty)
             [guid]::Parse($record.Fields.TurnId) | Should -Not -Be ([guid]::Empty)
             $record.Fields.SessionId | Should -Not -Be $script:agent.AcpSessionId
-            $record.Fields.IsAutofix | Should -BeIn @('false', '0')
             $record.Fields.TemplateKind | Should -Not -Be 'AgentCommand'
             $record.Types.PromptLengthBytes | Should -Match 'UInt32$'
             $record.Types.UserPromptOrdinal | Should -Match 'AnsiString$'
@@ -454,7 +331,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         foreach ($record in $completed) {
             $record.Fields.Success | Should -BeIn @('true', '1')
             $record.Types.TotalDurationMs | Should -Match 'Double$'
-            $record.Types.IsAutofix | Should -Match 'Boolean$'
         }
         @($prompts.Fields.SessionId | Select-Object -Unique) | Should -HaveCount 1
         @($prompts.Fields.TurnId | Select-Object -Unique) | Should -HaveCount 2
@@ -462,7 +338,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             $result = @($completed | Where-Object { $_.Fields.TurnId -eq $sent.Fields.TurnId })
             $result | Should -HaveCount 1
             $result[0].Fields.SessionId | Should -Be $sent.Fields.SessionId
-            $result[0].Fields.IsAutofix | Should -Be $sent.Fields.IsAutofix
         }
     }
 
@@ -483,60 +358,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
         @(Get-TelemetryPhaseEvents -Phase second-window -Name AppCreated) | Should -HaveCount 1
     }
 
-    It 'Concrete Autofix offers count once and only Run accepts' -ForEach @(
-        @{ Decision = 'Run' }, @{ Decision = 'Insert' }, @{ Decision = 'Reject' }
-    ) {
-        $offered = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name ErrorFixOffered)
-        $accepted = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name ErrorFixAccepted)
-        $offered | Should -HaveCount 1 -Because 'redrawing the same concrete card must not double count it'
-        $offered[0].Types.OfferId | Should -Match 'AnsiString$'
-        [guid]::Parse($offered[0].Fields.OfferId) | Should -Not -Be ([guid]::Empty)
-        $offered[0].Fields.Source | Should -Be 'Detection'
-        $detected = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name ErrorDetected | Where-Object { $_.Fields.OfferId -eq $offered[0].Fields.OfferId })
-        $detected | Should -HaveCount 1
-        $detected[0].Fields.Source | Should -Be 'Detection'
-        $sent = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name AgentPromptSent | Where-Object { $_.Fields.IsAutofix -in @('true', '1') })
-        $sent | Should -HaveCount 1
-        $completed = @(Get-TelemetryPhaseEvents -Phase "offer-$Decision" -Name AgentResponseComplete | Where-Object { $_.Fields.TurnId -eq $sent[0].Fields.TurnId })
-        $completed | Should -HaveCount 1
-        $completed[0].Fields.SessionId | Should -Be $sent[0].Fields.SessionId
-        $completed[0].Fields.IsAutofix | Should -BeIn @('true', '1')
-        $phase = $script:phases["offer-$Decision"].Data
-        if ($Decision -eq 'Run') {
-            $accepted | Should -HaveCount 1
-            $accepted[0].Fields.OfferId | Should -Be $offered[0].Fields.OfferId
-            $accepted[0].Types.OfferId | Should -Match 'AnsiString$'
-            $accepted[0].Fields.Source | Should -Be 'Detection'
-            ([DateTimeOffset]$accepted[0].Timestamp).UtcDateTime.Add($script:traceClockCorrection) |
-                Should -BeGreaterOrEqual ([DateTimeOffset]$phase.DecisionUtc).UtcDateTime
-            $phase.Executed | Should -BeTrue
-        }
-        else {
-            $accepted | Should -HaveCount 0
-            $phase.Executed | Should -BeFalse
-        }
-    }
-
-    It 'Run telemetry observes dispatch without claiming command success' {
-        $starts = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixRunStarted)
-        $results = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixRunResult)
-        $accepted = @(Get-TelemetryPhaseEvents -Phase offer-Run -Name ErrorFixAccepted)
-        $starts | Should -HaveCount 1
-        $results | Should -HaveCount 1
-        $accepted | Should -HaveCount 1
-        $script:phases['offer-Run'].Data.Executed | Should -BeTrue
-        $starts[0].Fields.OfferId | Should -Be $accepted[0].Fields.OfferId
-        $results[0].Fields.OfferId | Should -Be $starts[0].Fields.OfferId
-        $results[0].Fields.RunId | Should -Be $starts[0].Fields.RunId
-        [guid]::Parse($starts[0].Fields.RunId) | Should -Not -Be ([guid]::Empty)
-        $results[0].Fields.Outcome | Should -Be 'unobservable'
-        $results[0].Types.RunId | Should -Match 'AnsiString$'
-        $results[0].Types.Outcome | Should -Match 'AnsiString$'
-        foreach ($phase in @('offer-Insert', 'offer-Reject', 'conversation')) {
-            @(Get-TelemetryPhaseEvents -Phase $phase | Where-Object Name -in @('ErrorFixRunStarted', 'ErrorFixRunResult')) | Should -HaveCount 0
-        }
-    }
-
     It 'Provider changes expose bounded roles and transitions without unchanged reloads' {
         $actual = @(Get-TelemetryPhaseEvents -Phase provider-changes -Name AgentProviderChanged)
         $expected = @($script:phases['provider-changes'].Data.Expected)
@@ -551,10 +372,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             ([DateTimeOffset]$_.Timestamp).UtcDateTime.Add($script:traceClockCorrection) -ge
                 ([DateTimeOffset]$script:phases['provider-changes'].Data.UnchangedUtc).UtcDateTime
         }) | Should -HaveCount 0
-        $barrier = $script:phases['provider-changes'].Data
-        $barrier.UnchangedApplied.method | Should -Be 'agent_config_changed'
-        ($barrier.UnchangedApplied.params.autofix_enabled -is [bool]) | Should -BeTrue
-        $barrier.UnchangedApplied.params.autofix_enabled | Should -Be $barrier.UnchangedAutofix
         @(Get-TelemetryPhaseEvents -Phase provider-changes -Name JsonSettingsChanged | Where-Object {
             ([DateTimeOffset]$_.Timestamp).UtcDateTime.Add($script:traceClockCorrection) -ge
                 ([DateTimeOffset]$script:phases['provider-changes'].Data.UnchangedUtc).UtcDateTime
@@ -591,100 +408,6 @@ Describe 'Feature: telemetry funnels' -Tag 'Feature', 'Telemetry' -Skip:($env:IT
             $snapshot.Fields.AllowCustomAgentsPolicy | Should -Be 'not_configured'
             $snapshot.Fields.DefaultsFallback | Should -BeIn @('false', '0')
         }
-    }
-
-    It 'Optional hot-policy diagnostic updates a connected helper' -Tag 'HotPolicyDiagnostic' -ForEach @(
-        if ($env:ITE2E_TELEMETRY_HOT_POLICY -eq '1') {
-            @{ Allowed = $false }, @{ Allowed = $true }
-        }
-    ) {
-        $events = @(Get-TelemetryPhaseEvents -Phase "autofix-policy-$Allowed" -Name ErrorDetected | Where-Object {
-            $_.Provider -eq '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b' -and $_.Fields.PaneId -eq $script:shell.session_id
-        })
-        $data = $script:phases["autofix-policy-$Allowed"].Data
-        ($data.Config.params.autofix_enabled -is [bool]) | Should -BeTrue
-        $data.Config.params.autofix_enabled | Should -Be $Allowed
-        $data.Config.params.autofix_policy_state | Should -Be $(if ($Allowed) { 'enabled' } else { 'disabled' })
-        if ($Allowed) {
-            $events.Count | Should -BeGreaterThan 0
-            foreach ($event in $events) {
-                $event.Fields.AllowAutoFixPolicy | Should -Be 'enabled'
-                $event.Fields.AutoFixEnabled | Should -BeIn @('true', '1')
-                $event.Fields.Method | Should -Be 'vt_sequence'
-                $event.Types.AllowAutoFixPolicy | Should -Match 'AnsiString$'
-                $event.Types.AutoFixEnabled | Should -Match 'Boolean$'
-            }
-        }
-        else {
-            $events | Should -HaveCount 1 -Because 'blocked policy counts the failure without forwarding raw shell content'
-            $events[0].Fields.Method | Should -Be 'vt_sequence'
-            $events[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
-            $events[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
-            @(Get-TelemetryPhaseEvents -Phase "autofix-policy-$Allowed" | Where-Object {
-                $_.ProcessId -eq $script:agent.HelperProcessId -and
-                $_.Name -in @('AgentPromptSent', 'ErrorFixOffered', 'ErrorFixAccepted')
-            }) | Should -HaveCount 0 -Because 'neither the new blocked failure nor an older error may start Autofix'
-        }
-    }
-
-    It 'Startup Autofix policy labels match effective helper state (Allowed=<Allowed>)' -ForEach @(
-        @{ Allowed = $false }, @{ Allowed = $true }
-    ) {
-        $phaseName = "cold-autofix-policy-$Allowed"
-        $events = @(Get-TelemetryPhaseEvents -Phase $phaseName -Name ErrorDetected -Provider '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b')
-        $data = $script:phases[$phaseName].Data
-        $data.StartupPolicy | Should -BeTrue
-        $data.HotRefreshValidated | Should -BeFalse
-        $events = @($events | Where-Object {
-            $_.ProcessId -eq $data.HelperPid -and $_.Fields.PaneId -eq $data.SourcePane
-        })
-        $connections = @($events | Where-Object { $_.Fields.Method -eq 'connection_state' })
-        $events = @($events | Where-Object { $_.Fields.Method -eq 'vt_sequence' })
-        $events | Should -HaveCount 1 -Because 'the actual shell failure must be counted exactly once in either policy group'
-        $events[0].Fields.AllowAutoFixPolicy | Should -Be $(if ($Allowed) { 'enabled' } else { 'disabled' })
-        $events[0].Fields.AutoFixEnabled | Should -BeIn $(if ($Allowed) { @('true', '1') } else { @('false', '0') })
-        $events[0].Types.AllowAutoFixPolicy | Should -Match 'AnsiString$'
-        $events[0].Types.AutoFixEnabled | Should -Match 'Boolean$'
-        $events[0].Types.PartA_PrivTags | Should -Match 'UInt64$'
-        $events[0].Fields.Method | Should -Be 'vt_sequence'
-        $events[0].Types.Method | Should -Match 'AnsiString$'
-        $events[0].Fields.Method | Should -Be $data.DetectionMethod
-        if (-not $Allowed) {
-            $connections | Should -HaveCount 1 -Because 'the separate connection-failure control must remain covered'
-            $connections[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
-            $connections[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
-            $data.ConnectionEnd.params.state | Should -Be 'failed'
-            $data.ConnectionEnd.params.pane_id | Should -Be $data.SourcePane
-            @(Get-TelemetryPhaseEvents -Phase $phaseName | Where-Object {
-                $_.ProcessId -eq $data.HelperPid -and $_.Name -in @('ErrorFixOffered', 'ErrorFixAccepted')
-            }) | Should -HaveCount 0 -Because 'connection failure is notification-only, never an Autofix offer'
-        }
-        $prompts = @(Get-TelemetryPhaseEvents -Phase $phaseName -Name AgentPromptSent | Where-Object {
-            $_.ProcessId -eq $data.HelperPid
-        })
-        $prompts | Should -HaveCount $(if ($Allowed) { 1 } else { 0 })
-        if ($Allowed) {
-            $prompts[0].Fields.IsAutofix | Should -BeIn @('true', '1')
-            $prompts[0].Types.IsAutofix | Should -Match 'Boolean$'
-        }
-    }
-
-    It 'Policy-blocked shell failures remain telemetry-only' {
-        $phaseName = 'cold-autofix-policy-False'
-        $events = @(Get-TelemetryPhaseEvents -Phase $phaseName -Name ErrorDetected -Provider '4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b')
-        $data = $script:phases[$phaseName].Data
-        $data.BlockedFailure.method | Should -Be 'shell_command_failed'
-        $data.BlockedFailure.params.pane_id | Should -Be $data.SourcePane
-        $failures = @($events | Where-Object {
-            $_.ProcessId -eq $data.HelperPid -and $_.Fields.PaneId -eq $data.SourcePane -and $_.Fields.Method -eq 'vt_sequence'
-        })
-        $failures | Should -HaveCount 1
-        $failures[0].Fields.AllowAutoFixPolicy | Should -Be 'disabled'
-        $failures[0].Fields.AutoFixEnabled | Should -BeIn @('false', '0')
-        @(Get-TelemetryPhaseEvents -Phase $phaseName | Where-Object {
-            $_.ProcessId -eq $data.HelperPid -and
-            $_.Name -in @('AgentPromptSent', 'ErrorFixOffered', 'ErrorFixAccepted')
-        }) | Should -HaveCount 0
     }
 
     It 'Startup policy buckets retain configured inventory and effective provider gates' {

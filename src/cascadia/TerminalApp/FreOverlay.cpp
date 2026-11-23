@@ -9,11 +9,9 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentAvailability.h"
 #include "../inc/WtaProcess.h"
-#include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
 #include "AgentPaneLog.h"
 #include "FreLayoutMetrics.h"
-#include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
 
 #include <ScopedResourceLoader.h>
@@ -42,7 +40,6 @@ namespace winrt::TerminalApp::implementation
         _UpdateIllustrationTheme();
 
         SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
-        ErrorDetectionProgressText().Text(RS_(L"FreOverlay_TurningOnErrorDetection"));
         SessionsProgressText().Text(RS_(L"FreOverlay_TurningOnSessions"));
     }
 
@@ -51,7 +48,6 @@ namespace winrt::TerminalApp::implementation
         // Keep FRE chrome dark; only screenshots follow the surrounding app theme.
         const auto theme = ActualTheme();
         SidebarImage().RequestedTheme(theme);
-        AutofixImage().RequestedTheme(theme);
     }
 
     void FreOverlay::_OnRootGridSizeChanged(
@@ -70,19 +66,14 @@ namespace winrt::TerminalApp::implementation
 
         const auto layout = ResolveFreWelcomeLayout(viewport.Width, viewport.Height);
         WelcomeCardsGrid().Width(layout.cardsWidth);
-        Grid::SetColumn(AutofixCard(), layout.autofixCardColumn);
-        Grid::SetColumn(SidebarCard(), layout.sidebarCardColumn);
-        AutofixCard().Width(layout.cardWidth);
-        SidebarCard().Width(layout.cardWidth);
+        SidebarCard().Width(layout.cardsWidth);
         SidebarCard().MinHeight(layout.cardMinHeight);
-        AutofixCard().MinHeight(layout.cardMinHeight);
         if (const auto frame = FindName(L"SidebarImageFrame").try_as<Border>())
         {
-            frame.Height(layout.cardImageHeight);
-        }
-        if (const auto frame = FindName(L"AutofixImageFrame").try_as<Border>())
-        {
-            frame.Height(layout.cardImageHeight);
+            const auto imageWidth = std::min(
+                layout.cardImageMaxWidth,
+                std::max(0.0, layout.cardsWidth - (layout.cardHorizontalPadding * 2.0)));
+            frame.Height(imageWidth * 9.0 / 16.0);
         }
         WelcomeContentScroller().VerticalScrollBarVisibility(ScrollBarVisibility::Auto);
 
@@ -96,12 +87,7 @@ namespace winrt::TerminalApp::implementation
             const winrt::Windows::UI::Xaml::CornerRadius cardRadius{ radius, radius, radius, radius };
             const winrt::Windows::UI::Xaml::CornerRadius imageRadius{ radius, radius, 0.0, 0.0 };
             SidebarCard().CornerRadius(cardRadius);
-            AutofixCard().CornerRadius(cardRadius);
             if (const auto frame = FindName(L"SidebarImageFrame").try_as<Border>())
-            {
-                frame.CornerRadius(imageRadius);
-            }
-            if (const auto frame = FindName(L"AutofixImageFrame").try_as<Border>())
             {
                 frame.CornerRadius(imageRadius);
             }
@@ -113,7 +99,6 @@ namespace winrt::TerminalApp::implementation
         _agentPaneLog("[FRE] Progress: attempt=started");
 
         SavingStatusText().Text(RS_(L"FreOverlay_SettingUp"));
-        ErrorDetectionProgressText().Text(RS_(L"FreOverlay_TurningOnErrorDetection"));
         SessionsProgressText().Text(RS_(L"FreOverlay_TurningOnSessions"));
 
         winrt::hstring agentName;
@@ -149,13 +134,11 @@ namespace winrt::TerminalApp::implementation
         const std::array rows{
             SetupProgressRow(),
             AgentProgressRow(),
-            ErrorDetectionProgressRow(),
             SessionsProgressRow(),
         };
         const std::array icons{
             SetupProgressIcon(),
             AgentProgressIcon(),
-            ErrorDetectionProgressIcon(),
             SessionsProgressIcon(),
         };
         for (const auto& row : rows)
@@ -193,12 +176,6 @@ namespace winrt::TerminalApp::implementation
             text = AgentProgressText();
             icon = AgentProgressIcon();
             stepName = "agent";
-            break;
-        case ProgressStep::ErrorDetection:
-            row = ErrorDetectionProgressRow();
-            text = ErrorDetectionProgressText();
-            icon = ErrorDetectionProgressIcon();
-            stepName = "error-detection";
             break;
         case ProgressStep::Sessions:
             row = SessionsProgressRow();
@@ -252,12 +229,6 @@ namespace winrt::TerminalApp::implementation
             text = AgentProgressText();
             icon = AgentProgressIcon();
             stepName = "agent";
-            break;
-        case ProgressStep::ErrorDetection:
-            row = ErrorDetectionProgressRow();
-            text = ErrorDetectionProgressText();
-            icon = ErrorDetectionProgressIcon();
-            stepName = "error-detection";
             break;
         case ProgressStep::Sessions:
             row = SessionsProgressRow();
@@ -595,29 +566,7 @@ namespace winrt::TerminalApp::implementation
         else if (currentPos == L"top") PanePositionComboBox().SelectedIndex(3);
         else PanePositionComboBox().SelectedIndex(0); // default: bottom
 
-        // Map the two persisted settings to the single error-detection choice.
-        // EffectiveAutoFixEnabled already accounts for both the auto-fix policy
-        // and detection being disabled.
-        const auto detectionMode = !globals.EffectiveAutoErrorDetectionEnabled()
-            ? ErrorDetectionMode::Off
-            : globals.EffectiveAutoFixEnabled()
-            ? ErrorDetectionMode::DetectAndFix
-            : ErrorDetectionMode::Detect;
-        _SetErrorDetectionMode(detectionMode);
         SessionManagementToggle().IsOn(globals.EffectiveAgentSessionManagementEnabled());
-
-        const bool autoFixLocked = globals.IsAutoFixPolicyLocked();
-        ErrorDetectionAutoFixOption().IsEnabled(!autoFixLocked);
-        ErrorDetectionPolicyNotice().Visibility(autoFixLocked ? Visibility::Visible : Visibility::Collapsed);
-        // Accessibility: explain why this dropdown option is disabled.
-        Automation::AutomationProperties::SetHelpText(
-            ErrorDetectionAutoFixOption(),
-            autoFixLocked ? RS_(L"FreOverlay_ErrorDetectionAutoFixPolicyLocked") : winrt::hstring{});
-        if (autoFixLocked)
-        {
-            const auto policyText = RS_(L"FreOverlay_ErrorDetectionAutoFixPolicyLocked");
-            ErrorDetectionPolicyNotice().Text(policyText);
-        }
 
         // Session management toggle — honour AllowAgentSessionHooks GPO
         if (globals.IsAgentSessionHooksPolicyLocked())
@@ -639,8 +588,6 @@ namespace winrt::TerminalApp::implementation
         Automation::AutomationProperties::SetName(
             SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
         Automation::AutomationProperties::SetName(
-            ErrorDetectionComboBox(), RS_(L"FreOverlay_ErrorDetectionLabel/Text"));
-        Automation::AutomationProperties::SetName(
             AutomaticApprovalToggle(), AutomaticApprovalTitle().Text());
         Automation::AutomationProperties::SetName(
             SessionManagementToggle(), RS_(L"FreOverlay_SessionLabel/Text"));
@@ -656,42 +603,6 @@ namespace winrt::TerminalApp::implementation
 
     }
 
-    // ── Error detection mode ────────────────────────────────────────────
-
-    FreOverlay::ErrorDetectionMode FreOverlay::_CurrentErrorDetectionMode()
-    {
-        const auto comboBox = ErrorDetectionComboBox();
-        if (!comboBox)
-        {
-            return ErrorDetectionMode::Off;
-        }
-
-        switch (comboBox.SelectedIndex())
-        {
-        case static_cast<int32_t>(ErrorDetectionMode::Detect):
-            return ErrorDetectionMode::Detect;
-        case static_cast<int32_t>(ErrorDetectionMode::DetectAndFix):
-            return ErrorDetectionMode::DetectAndFix;
-        default:
-            return ErrorDetectionMode::Off;
-        }
-    }
-
-    void FreOverlay::_SetErrorDetectionMode(ErrorDetectionMode mode)
-    {
-        if (mode == ErrorDetectionMode::DetectAndFix &&
-            _settings &&
-            _settings.GlobalSettings().IsAutoFixPolicyLocked())
-        {
-            mode = ErrorDetectionMode::Detect;
-        }
-
-        if (const auto comboBox = ErrorDetectionComboBox())
-        {
-            comboBox.SelectedIndex(static_cast<int32_t>(mode));
-        }
-    }
-
     void FreOverlay::_OnSettingsFormScrollerSizeChanged(
         const IInspectable& /*sender*/,
         const SizeChangedEventArgs& /*args*/)
@@ -703,8 +614,7 @@ namespace winrt::TerminalApp::implementation
     {
         const auto scroller = SettingsFormScroller();
         const auto stack = SettingsFormStack();
-        const auto errorDetectionComboBox = ErrorDetectionComboBox();
-        if (!scroller || !stack || !errorDetectionComboBox)
+        if (!scroller || !stack)
         {
             return;
         }
@@ -723,11 +633,9 @@ namespace winrt::TerminalApp::implementation
         };
         measureDescription(AgentDescriptionText());
         measureDescription(PanePositionDescriptionText());
-        measureDescription(ErrorDetectionDescriptionText());
         measureDescription(SessionDescriptionText());
         double longestControlWidth = AgentComboBox().MinWidth();
         longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
-        longestControlWidth = std::max(longestControlWidth, errorDetectionComboBox.Width());
 
         constexpr double cardHorizontalPadding = 32;
         constexpr double columnSpacing = 24;
@@ -1450,7 +1358,7 @@ namespace winrt::TerminalApp::implementation
     // links to step-by-step manual-setup docs.
     void FreOverlay::_ShowProblem(FreProblemKind kind)
     {
-        // Base doc; prerequisites and shell integration deep-link to a section.
+        // Base documentation for missing agent prerequisites and hooks.
         static constexpr std::wstring_view baseUrl{ L"https://aka.ms/intelligent-terminal-dependency" };
 
         std::wstring url{ baseUrl };
@@ -1463,31 +1371,6 @@ namespace winrt::TerminalApp::implementation
         case FreProblemKind::WingetMissing:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorWingetMissing"));
             url += L"#1-winget-windows-package-manager";
-            break;
-        case FreProblemKind::ShellIntegrationExecutionPolicy:
-            ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
-            url += L"#41-powershell";
-            // The automatic CurrentUser remediation did not unblock shell
-            // integration. Turn off error detection so the user can continue;
-            // they can re-enable it after fixing an overriding policy.
-            _SetErrorDetectionMode(ErrorDetectionMode::Off);
-            if (_settings)
-            {
-                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
-                _settings.GlobalSettings().AutoFixEnabled(false);
-            }
-            break;
-        case FreProblemKind::ShellIntegration:
-            ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
-            url += L"#4-shell-integration";
-            // Remediation: turn off error detection so the user can save and
-            // continue without it.
-            _SetErrorDetectionMode(ErrorDetectionMode::Off);
-            if (_settings)
-            {
-                _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
-                _settings.GlobalSettings().AutoFixEnabled(false);
-            }
             break;
         case FreProblemKind::Hooks:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorHooks"));
@@ -1685,10 +1568,6 @@ namespace winrt::TerminalApp::implementation
             std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
             _agentSelectionExplicitlyChanged);
 
-        const auto errorDetectionMode = _CurrentErrorDetectionMode();
-        const bool errorDetectionEnabled = errorDetectionMode != ErrorDetectionMode::Off;
-        const bool autoFixEnabled = errorDetectionMode == ErrorDetectionMode::DetectAndFix;
-
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
@@ -1706,8 +1585,6 @@ namespace winrt::TerminalApp::implementation
             globals.AgentPaneYoloMode(AutomaticApprovalToggle().IsOn());
             globals.ClearAgentPaneYoloModeIfUnavailableDefault();
             globals.ClearAgentPaneYoloModeIfPolicyBlocked();
-            globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
-            globals.AutoFixEnabled(autoFixEnabled);
             if (!globals.IsAgentSessionHooksPolicyLocked())
             {
                 globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
@@ -1746,8 +1623,6 @@ namespace winrt::TerminalApp::implementation
 
         _agentPaneLog("[FRE] Save: agent=" + winrt::to_string(agentId)
             + " needsNode=" + (needsNode ? "y" : "n")
-            + " detect=" + (errorDetectionEnabled ? "on" : "off")
-            + " autoFix=" + (autoFixEnabled ? "on" : "off")
             + " automaticApproval=" + (AutomaticApprovalToggle().IsOn() ? "on" : "off")
             + " hooks=" + (SessionManagementToggle().IsOn() ? "on" : "off"));
 
@@ -1802,7 +1677,7 @@ namespace winrt::TerminalApp::implementation
 
             // The successful Node bootstrap is authoritative for this FRE
             // instance. Update the cached snapshot so a later retry after an
-            // unrelated hooks/shell error does not reinstall Node.
+            // unrelated hooks error does not reinstall Node.
             if (_hostAgentSnapshot)
             {
                 _hostAgentSnapshot->npxFound = true;
@@ -1848,182 +1723,10 @@ namespace winrt::TerminalApp::implementation
 
         _FinishProgressStep(ProgressStep::Agent, ProgressResult::Completed);
 
-        // 4+5. Install shell integration and hooks. Run both, collect any
-        // failures, then surface only the highest-priority one (see
-        // _ShowProblem). Lower-priority failures are left enabled so the next
-        // Save retries them.
+        // Install optional agent hooks for session management.
         bool hooksFailed = false;
-        bool shellIntegFailed = false;
-        bool shellIntegEpBlocked = false;
 
-        // 4. Shell integration — only when error detection is enabled.
-        if (errorDetectionEnabled)
-        {
-            auto self = weak.get();
-            if (!self)
-                co_return;
-
-            _BeginProgressStep(ProgressStep::ErrorDetection);
-            _agentPaneLog("[FRE] Installing shell integration");
-
-            const auto installShellIntegration = ShellIntegrationSweep::PrepareInstall(
-                _settings,
-                ShellIntegrationSweep::InstallTargets::All);
-
-            co_await winrt::resume_background();
-            namespace PowerShell = ::Microsoft::Terminal::ShellIntegration::Powershell;
-
-            const auto remediation = PowerShell::RemediateExecutionPoliciesForCurrentUser();
-            const auto logPolicyProbe = [](const char* phase,
-                                           const char* host,
-                                           const PowerShell::ExecutionPolicyProbeResult& probe) {
-                _agentPaneLog(std::string{ "[FRE] EP remediation " } + phase + " " + host +
-                              " status=" + std::to_string(static_cast<int>(probe.status)) +
-                              " policy='" + winrt::to_string(winrt::hstring{ probe.policy }) + "'" +
-                              " timeout=" + (probe.process.timedOut ? "1" : "0") +
-                              " error=" + std::to_string(probe.process.error) +
-                              " exit=" + std::to_string(probe.process.exitCode));
-            };
-            logPolicyProbe("pre", "pwsh", remediation.pwshBefore);
-            logPolicyProbe("pre", "winPs", remediation.windowsPowerShellBefore);
-
-            if (remediation.attempted)
-            {
-                const auto logSetter = [](const char* host, const PowerShell::PowerShellProcessResult& setter) {
-                    _agentPaneLog(std::string{ "[FRE] EP remediation set " } + host +
-                                  " launched=" + (setter.launched ? "1" : "0") +
-                                  " timeout=" + (setter.timedOut ? "1" : "0") +
-                                  " error=" + std::to_string(setter.error) +
-                                  " exit=" + std::to_string(setter.exitCode));
-                };
-                if (remediation.pwshBefore.status == PowerShell::ExecutionPolicyStatus::Blocked)
-                {
-                    logSetter("pwsh", remediation.pwshSetter);
-                }
-                if (remediation.windowsPowerShellBefore.status == PowerShell::ExecutionPolicyStatus::Blocked)
-                {
-                    logSetter("winPs", remediation.windowsPowerShellSetter);
-                }
-                if (remediation.verificationAttempted)
-                {
-                    logPolicyProbe("post", "pwsh", remediation.pwshAfter);
-                    logPolicyProbe("post", "winPs", remediation.windowsPowerShellAfter);
-                }
-            }
-
-            auto remediationSucceeded = remediation.succeeded;
-#ifdef _DEBUG
-            const auto remediationFailureMarker =
-                std::filesystem::path{ winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path().c_str() } /
-                L"fre-e2e-policy-remediation-failure";
-            std::error_code remediationFailureMarkerError;
-            if (std::filesystem::exists(remediationFailureMarker, remediationFailureMarkerError) &&
-                !remediationFailureMarkerError)
-            {
-                _agentPaneLog("[FRE] E2E: forcing execution-policy remediation failure");
-                remediationSucceeded = false;
-            }
-#endif
-
-            ShellIntegrationSweep::InstallSweepResults results{};
-            if (!remediationSucceeded)
-            {
-                _agentPaneLog("[FRE] EP remediation FAILED; skipping shell integration");
-                shellIntegFailed = true;
-                shellIntegEpBlocked = true;
-            }
-            else
-            {
-                _agentPaneLog(remediation.attempted ?
-                                  "[FRE] EP remediation succeeded" :
-                                  "[FRE] EP remediation not needed");
-                // Profile-gated install: a user keeping only "Developer
-                // PowerShell for VS" (Windows PowerShell) and no pwsh
-                // profile must not get a pwsh integration block written.
-                // RunInstall reports a skipped shell as
-                // success-already-installed so the FRE failure verdict
-                // (below) doesn't flag a missing shell as a failure.
-                const auto policyCheck = PowerShell::ExecutionPoliciesVerifiedForInstall(remediation) ?
-                                             ShellIntegrationSweep::PowerShellPolicyCheck::AlreadyVerified :
-                                             ShellIntegrationSweep::PowerShellPolicyCheck::Probe;
-                results = installShellIntegration(policyCheck);
-            }
-            const auto& pwsh7Result = results.pwsh;
-            const auto& windowsPsResult = results.windowsPowerShell;
-            const auto& bashResult = results.bash;
-            const auto& wslResults = results.wsl;
-
-            if (remediationSucceeded)
-            {
-                std::string detail = "[FRE] Shell integration: pwsh7=";
-                detail += pwsh7Result.success ? "ok" : "FAILED";
-                if (!pwsh7Result.success && !pwsh7Result.errorMessage.empty())
-                    detail += " (" + winrt::to_string(winrt::hstring{ pwsh7Result.errorMessage }) + ")";
-                detail += " winPs=";
-                detail += windowsPsResult.success ? "ok" : "FAILED";
-                if (!windowsPsResult.success && !windowsPsResult.errorMessage.empty())
-                    detail += " (" + winrt::to_string(winrt::hstring{ windowsPsResult.errorMessage }) + ")";
-                detail += " bash=";
-                detail += bashResult.success ? "ok" : "FAILED";
-                if (!bashResult.success && !bashResult.errorMessage.empty())
-                    detail += " (" + winrt::to_string(winrt::hstring{ bashResult.errorMessage }) + ")";
-                for (const auto& [distName, r] : wslResults)
-                {
-                    detail += " wsl(" + winrt::to_string(winrt::hstring{ distName }) + ")=";
-                    detail += r.success ? "ok" : "FAILED";
-                    if (!r.success && !r.errorMessage.empty())
-                        detail += " (" + winrt::to_string(winrt::hstring{ r.errorMessage }) + ")";
-                }
-                _agentPaneLog(detail);
-            }
-
-            // Shell integration is treated as failed when EITHER
-            // PowerShell host's install fails. Both hosts are part of
-            // the user's primary shell family and the install is
-            // best-effort idempotent — if pwsh7 isn't installed,
-            // InstallForTarget returns success-with-empty-error
-            // because the file write succeeds harmlessly; only a real
-            // write failure or an execution-policy block reaches here.
-            // Bash and WSL failures are NOT counted here: users
-            // without Git Bash or without (running) WSL would
-            // otherwise see false-alarm errors on every FRE / Save.
-            if (!remediationSucceeded || !pwsh7Result.success || !windowsPsResult.success)
-            {
-                shellIntegFailed = true;
-                // If either host's failure was specifically the execution
-                // policy, surface the policy-specific message instead of the
-                // generic write-failed one. The user needs different
-                // remediation (Set-ExecutionPolicy / GPO) vs. a transient
-                // file write failure.
-                if (pwsh7Result.executionPolicyBlocked || windowsPsResult.executionPolicyBlocked)
-                {
-                    shellIntegEpBlocked = true;
-                }
-            }
-
-            bool shellIntegWarning = !bashResult.success;
-            for (const auto& [_, result] : wslResults)
-            {
-                if (!result.success)
-                {
-                    shellIntegWarning = true;
-                    break;
-                }
-            }
-
-            co_await winrt::resume_foreground(dispatcher);
-            self = weak.get();
-            if (!self)
-                co_return;
-
-            _FinishProgressStep(
-                ProgressStep::ErrorDetection,
-                shellIntegFailed  ? ProgressResult::Failed :
-                shellIntegWarning ? ProgressResult::Warning :
-                                    ProgressResult::Completed);
-        }
-
-        // 5. Hooks — skip if GPO blocks it or settings unavailable.
+        // Hooks are skipped when GPO blocks them or settings are unavailable.
         if (SessionManagementToggle().IsOn() &&
             _settings &&
             !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked() &&
@@ -2055,26 +1758,19 @@ namespace winrt::TerminalApp::implementation
                 hooksOk ? ProgressResult::Completed : ProgressResult::Failed);
         }
 
-        // Surface only the highest-priority failure. Shell integration outranks
-        // hooks; the unshown failure stays enabled and is retried on next Save.
-        if (hooksFailed || shellIntegFailed)
+        // Surface hook setup failures so the user can retry or continue.
+        if (hooksFailed)
         {
-            const auto problemKind = shellIntegEpBlocked ? FreProblemKind::ShellIntegrationExecutionPolicy
-                                                        : shellIntegFailed ? FreProblemKind::ShellIntegration
-                                                                           : FreProblemKind::Hooks;
-            _agentPaneLog("[FRE] Showing problem: "
-                + std::string(problemKind == FreProblemKind::ShellIntegrationExecutionPolicy ? "ShellIntegrationExecutionPolicy" :
-                              problemKind == FreProblemKind::ShellIntegration ? "ShellIntegration" :
-                                                                               "Hooks"));
+            _agentPaneLog("[FRE] Showing problem: Hooks");
             co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
 
-            _ShowProblem(problemKind);
+            _ShowProblem(FreProblemKind::Hooks);
             co_return;
         }
 
-        // 6. Resume UI thread before touching controls / raising events
+        // Resume the UI thread before touching controls or raising events.
         co_await winrt::resume_foreground(dispatcher);
         {
             auto self = weak.get();
@@ -2133,7 +1829,7 @@ namespace winrt::TerminalApp::implementation
 
         // Guard against being called before InitializeComponent has populated
         // the named XAML elements — matches the pattern used elsewhere in
-        // this file (see _SetErrorDetectionMode).
+        // this file's XAML elements.
         auto scroller = SettingsFormScroller();
         auto overlay = SavingOverlay();
         auto ring = SavingProgressRing();

@@ -454,54 +454,6 @@ namespace winrt::TerminalApp::implementation
             _agentSettingsSnapshotInitialized = true;
         }
 
-        // Shell-integration reconcile (silent, background).
-        //
-        // Fires on first-load AND whenever EffectiveAutoErrorDetectionEnabled
-        // changes between settings reloads. This handles two cases that
-        // the explicit FRE/Settings-Save install paths miss:
-        //
-        //   1. Toggle-OFF: previously a no-op, leaving our $PROFILE block
-        //      in place. We now call UninstallForTarget to strip it.
-        //   2. Roaming/sync: a synced settings.json arriving on a fresh
-        //      machine never triggered an install because no user action
-        //      ran. First-load reconcile installs based on an explicit
-        //      setting value (sync delivers one). When no explicit value
-        //      exists (truly fresh user), first-load is a no-op and the
-        //      FRE / Settings Save flow remains the consent path.
-        //
-        // Install/Uninstall are both idempotent — when the on-disk state
-        // already matches the desired state they return alreadyInstalled
-        // and do no I/O beyond a read. Safe to call every reload.
-        {
-            const bool currentDetection = _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool hasExplicit = _settings.GlobalSettings().HasAutoErrorDetectionEnabled();
-            const bool isFirstLoad = !_autoErrorDetectionSnapshotInitialized;
-            // First load gating:
-            //   - explicit value present (true or false, e.g. roaming-synced settings.json,
-            //     or local user has already saved) -> reconcile, which installs or removes
-            //     to match the user's expressed intent.
-            //   - no explicit value (fresh user, default true) -> do NOT install just because
-            //     the default is true. The FRE / Settings Save flow is the explicit consent
-            //     path for first-time PowerShell profile mutation.
-            // Subsequent reloads: fire on any change (so explicit toggle in Settings works
-            // even when transitioning back to the default value) AND on the false->true
-            // transition of explicit-ness (covers a user/sync adding the explicit key while
-            // the effective value happens to match the previously-defaulted value).
-            const bool effectiveChanged = (_lastAutoErrorDetectionEnabled != currentDetection);
-            const bool explicitTurnedOn = (!_lastAutoErrorDetectionHasExplicit && hasExplicit);
-            const bool shouldReconcile = isFirstLoad ? hasExplicit : (effectiveChanged || explicitTurnedOn);
-            _lastAutoErrorDetectionEnabled = currentDetection;
-            _lastAutoErrorDetectionHasExplicit = hasExplicit;
-            _autoErrorDetectionSnapshotInitialized = true;
-            if (shouldReconcile)
-            {
-                // Publish latest desired state BEFORE spawning the
-                // coroutine so the eventual locked re-read picks it up.
-                _shellIntegrationDesiredEnabled.store(currentDetection, std::memory_order_release);
-                _ReconcileShellIntegration();
-            }
-        }
-
         // Hot-reload of runtime agent config (autofix gate, delegate
         // agent/model, and model catalogs). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
@@ -626,7 +578,6 @@ namespace winrt::TerminalApp::implementation
         });
         _sidebarPaneFocusStop.KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         AgentToggleButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
-        DiagnosticsButton().KeyDown({ get_weak(), &TerminalPage::_KeyDownHandler });
         _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         _tabStrip.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         _tabRow.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
@@ -638,8 +589,6 @@ namespace winrt::TerminalApp::implementation
             { get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         AgentToggleButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
-        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
-        DiagnosticsButton().PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarTabFocusKeyDown });
         _tabContent.PreviewKeyDown({ get_weak(), &TerminalPage::_SidebarF6FocusKeyDown });
         winrt::get_self<implementation::TabStrip>(_tabStrip)->SetAgentCompletionResolver(
@@ -4929,76 +4878,6 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Window-level bottom-bar "diagnostics" click. Targets the active tab's
-    // AgentPaneContent — fires the cached autofix for that tab, or asks
-    // wta to execute / dismiss / re-trigger the diagnosis depending on
-    // the autofix state.
-    void TerminalPage::_DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& /*sender*/,
-                                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)
-    {
-        const auto activeTab = _GetFocusedTabImpl();
-        if (!activeTab)
-        {
-            return;
-        }
-        const auto agentContent = activeTab->FindAgentPaneContent();
-        if (!agentContent)
-        {
-            return;
-        }
-        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
-        if (!impl)
-        {
-            return;
-        }
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        const auto state = impl->GetAutofixState();
-        const auto paneId = impl->GetLastErrorPaneId();
-        // Open or focus the active tab's agent pane so the user can read the
-        // analysis / result in chat. Shared by Detected ("ask") and Review.
-        // Opening the pane dismisses Review; Detected remains actionable
-        // until the requested analysis starts.
-        const auto openAgentPaneForReview = [&]() {
-            const auto agentPane = activeTab->FindAgentPane();
-            if (agentPane && !agentPane->IsHidden())
-            {
-                if (agentContent.IsSessionsView())
-                {
-                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
-                }
-            }
-            else
-            {
-                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
-            }
-        };
-
-        switch (state)
-        {
-        case AS::Detected:
-        {
-            // "Ask the agent for a fix": open/focus the pane so the user
-            // watches the analysis, then fire the LLM call. No auto-inject.
-            openAgentPaneForReview();
-            Json::Value params;
-            params["pane_id"] = winrt::to_string(paneId);
-            params["tab_id"] = winrt::to_string(activeTab->StableId());
-            _RaiseProtocolEvent("autofix_execute_from_detected", params);
-            break;
-        }
-        case AS::Review:
-            // Result is ready in the pane chat — just open/focus the pane so
-            // the user can review and act manually. No auto-inject.
-            openAgentPaneForReview();
-            break;
-        case AS::Pending:
-        case AS::Idle:
-        default:
-            // No action.
-            break;
-        }
-    }
-
     // Recompute the window-level bottom bar's state from the active tab's
     // AgentPaneContent (or absence thereof). Called on:
     //   - tab switch (_UpdatedSelectedTab)
@@ -5066,8 +4945,7 @@ namespace winrt::TerminalApp::implementation
 
         // Look up the active tab's agent pane state. The pane is
         // window-level chrome, so when there's no AgentPaneContent on the
-        // active tab the bar still shows with both toggles unhighlighted and
-        // diagnostics disabled.
+        // active tab the bar still shows with both toggles unhighlighted.
         winrt::TerminalApp::AgentPaneContent activeAgent{ nullptr };
         if (focusedTabImpl)
         {
@@ -5125,33 +5003,6 @@ namespace winrt::TerminalApp::implementation
                 iconRight.Visibility(isVertical ? Visibility::Visible : Visibility::Collapsed);
         }
 
-        // Diagnostics button reflects the active tab's autofix state
-        // (Idle when there's no agent pane).
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        AS autofixState = AS::Idle;
-        winrt::hstring hotkeyHint;
-        winrt::hstring detectedSummary;
-        // Autofix-state read must NOT be gated on pane visibility. The
-        // helper keeps running and detecting command failures even when
-        // the agent pane is stashed (pre-warm path: helper is spawned
-        // and observing from the moment the tab opens, even while ACP
-        // connects). `OnAutofixStateChanged` writes the latest state into
-        // AgentPaneContent's cache regardless of stash, so the bar
-        // should reflect it regardless of stash too. (The toggle-button
-        // highlights above DO gate on `paneOpen` — that's correct, they
-        // mean "which view is currently shown.") Without this, the bar
-        // shows Idle forever until the user opens the pane, which
-        // defeats autofix-without-toggle.
-        if (activeAgent)
-        {
-            if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent))
-            {
-                autofixState = impl->GetAutofixState();
-                hotkeyHint = impl->GetHotkeyHint();
-                detectedSummary = impl->GetDetectedSummary();
-            }
-        }
-
         if (const auto usageGroup = UsageGroup())
         {
             usageGroup.Children().Clear();
@@ -5183,98 +5034,6 @@ namespace winrt::TerminalApp::implementation
                 }
             }
             usageGroup.Visibility(usageVisible ? Visibility::Visible : Visibility::Collapsed);
-        }
-
-        if (auto diagBtn = DiagnosticsButton())
-        {
-            // Detection remains actionable while ACP connects. The helper
-            // owns the diagnostic state and queues requests until ready;
-            // connection readiness gates dispatch, not this affordance.
-            const bool detectionEnabled =
-                _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool showGroup = ::TerminalApp::Autofix::ShouldShowDiagnostics(autofixState, detectionEnabled);
-            if (const auto group = DiagnosticsGroup())
-            {
-                group.Visibility(showGroup ? Visibility::Visible : Visibility::Collapsed);
-            }
-            if (!showGroup)
-            {
-                return;
-            }
-
-            auto label = DiagnosticsLabel();
-
-            switch (autofixState)
-            {
-            case AS::Pending:
-            {
-                diagBtn.Opacity(1.0);
-                diagBtn.IsEnabled(false);
-                ToolTipService::SetToolTip(
-                    diagBtn,
-                    box_value(RS_(L"Diagnostics_AnalyzingTooltip")));
-                if (label)
-                {
-                    label.Text(RS_(L"Diagnostics_ErrorPendingLabel"));
-                    label.Visibility(Visibility::Visible);
-                }
-                break;
-            }
-            case AS::Review:
-            {
-                // Analysis finished and a result is waiting in the agent
-                // pane chat, which is currently closed. Invite the user to
-                // open the pane and review. No auto-inject: clicking only
-                // opens the pane (handled in _DiagnosticsButtonOnClick).
-                diagBtn.Opacity(1.0);
-                diagBtn.IsEnabled(true);
-
-                const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
-                if (label)
-                {
-                    label.Text(winrt::hstring{ RS_fmt(L"Diagnostics_ReviewLabelFormat", hotkey) });
-                    label.Visibility(Visibility::Visible);
-                }
-                ToolTipService::SetToolTip(
-                    diagBtn,
-                    box_value(RS_(L"Diagnostics_ReviewTooltip")));
-                break;
-            }
-            case AS::Detected:
-            {
-                diagBtn.Opacity(1.0);
-                diagBtn.IsEnabled(true);
-
-                const auto hotkey = hotkeyHint.empty() ? std::wstring{ L"Ctrl+Alt+." } : std::wstring{ hotkeyHint };
-                std::wstring labelText = RS_fmt(L"Diagnostics_ErrorDetectedLabelFormat", hotkey);
-                if (label)
-                {
-                    label.Text(winrt::hstring{ labelText });
-                    label.Visibility(Visibility::Visible);
-                }
-                std::wstring tooltip = RS_fmt(L"Diagnostics_ErrorDetectedTooltipFormat", hotkey);
-                if (!detectedSummary.empty())
-                {
-                    tooltip += L"\n\n";
-                    tooltip += detectedSummary;
-                }
-                ToolTipService::SetToolTip(
-                    diagBtn,
-                    box_value(winrt::hstring{ tooltip }));
-                break;
-            }
-            case AS::Idle:
-            default:
-            {
-                diagBtn.IsEnabled(false);
-                if (label)
-                {
-                    label.Visibility(Visibility::Collapsed);
-                    label.Text(L"");
-                }
-                break;
-            }
-            }
         }
     }
 
@@ -6755,7 +6514,7 @@ namespace winrt::TerminalApp::implementation
         {
             const auto focused = WUX::Input::FocusManager::GetFocusedElement(root);
             const auto page = const_cast<TerminalPage*>(this);
-            if (focused == _sidebarPaneFocusStop || focused == page->AgentToggleButton() || focused == page->DiagnosticsButton())
+            if (focused == _sidebarPaneFocusStop || focused == page->AgentToggleButton())
             {
                 return focused.try_as<WUX::Controls::Control>();
             }
@@ -6861,10 +6620,6 @@ namespace winrt::TerminalApp::implementation
             {
                 e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
             }
-            else if (focused == DiagnosticsButton())
-            {
-                e.Handled(_FocusSidebarShellPaneStop() || tabStrip->FocusActiveSidebarTab());
-            }
             else if (focused == toggle)
             {
                 e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
@@ -6881,10 +6636,6 @@ namespace winrt::TerminalApp::implementation
                       toggle.Focus(FocusState::Keyboard));
         }
         else if (focused == agentToggle)
-        {
-            e.Handled(toggle.Focus(FocusState::Keyboard));
-        }
-        else if (focused == DiagnosticsButton())
         {
             e.Handled(toggle.Focus(FocusState::Keyboard));
         }
@@ -6931,9 +6682,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto agentToggle = AgentToggleButton();
-        const auto diagnostics = DiagnosticsButton();
         const auto agentVisible = _IsVisibleControlInSubtree(agentToggle, BottomBarRoot());
-        const auto diagnosticsVisible = _IsVisibleControlInSubtree(diagnostics, BottomBarRoot());
         const auto focused = WUX::Input::FocusManager::GetFocusedElement(_tabStrip.XamlRoot());
         const auto shift = WI_IsFlagSet(window.GetKeyState(Windows::System::VirtualKey::Shift), down);
         const auto list = winrt::get_self<implementation::TabStrip>(_tabStrip)->ItemsList();
@@ -6956,13 +6705,6 @@ namespace winrt::TerminalApp::implementation
         };
         if (shift && toggle.FocusState() != FocusState::Unfocused)
         {
-            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
-                      (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
-                      _FocusSidebarShellPaneStop() ||
-                      focusLastSidebarStop());
-        }
-        else if (shift && focused == diagnostics)
-        {
             e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
                       _FocusSidebarShellPaneStop() ||
                       focusLastSidebarStop());
@@ -6977,18 +6719,12 @@ namespace winrt::TerminalApp::implementation
         }
         else if (!shift && focused == agentToggle)
         {
-            e.Handled((diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
-                      toggle.Focus(FocusState::Keyboard));
+            e.Handled(toggle.Focus(FocusState::Keyboard));
         }
         else if (!shift && focused == _sidebarPaneFocusStop)
         {
             e.Handled((agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
-                      (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
                       toggle.Focus(FocusState::Keyboard));
-        }
-        else if (!shift && focused == diagnostics)
-        {
-            e.Handled(toggle.Focus(FocusState::Keyboard));
         }
         else
         {
@@ -7024,7 +6760,6 @@ namespace winrt::TerminalApp::implementation
                     {
                         e.Handled(_FocusSidebarShellPaneStop() ||
                                   (agentVisible && agentToggle.Focus(FocusState::Keyboard)) ||
-                                  (diagnosticsVisible && diagnostics.Focus(FocusState::Keyboard)) ||
                                   toggle.Focus(FocusState::Keyboard));
                         break;
                     }
@@ -15140,33 +14875,6 @@ namespace winrt::TerminalApp::implementation
                                 return;
                             }
 
-                            // GPO-blocked gate: when administrator policy
-                            // explicitly disables auto-fix, the feature
-                            // is off across the board — no Pending, no
-                            // Detected pill, no background analysis.
-                            // `IsAutoFixPolicyLocked()` returns true only
-                            // for the Blocked policy state; Forced-on
-                            // states the user can change fall through.
-                            const auto autoFixPolicyLocked = page->_settings.GlobalSettings().IsAutoFixPolicyLocked();
-
-                            // Early filter: WTA only acts on osc:133;*
-                            // and AgentEvent payloads. Every other VT
-                            // sequence (cursor moves, OSC 0/1 titles,
-                            // color resets, …) gets classified as
-                            // Informational and dropped on the other
-                            // side, so skip the pane/tab lookup, JSON
-                            // encode, and IPC for those entirely. This
-                            // matters because VtSequenceReceived can
-                            // fire hundreds of times a second on a
-                            // busy terminal.
-                            //
-                            // (The `autoFixEnabled` user setting only
-                            // controls whether WTA *automatically*
-                            // invokes the LLM; the Detected pill needs
-                            // these events too. Toggle changes
-                            // hot-reload into WTA via
-                            // `autofix_enabled_changed`, so no
-                            // user-pref gate is needed here.)
                             auto seqStr = winrt::to_string(seq);
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
                             static constexpr std::string_view osc133Prefix = "osc:133;";
@@ -15372,58 +15080,29 @@ namespace winrt::TerminalApp::implementation
                                     // present to echo the binding back.
                                     page->OnPaneAgentSessionChanged(winrt::to_hstring(eventJson));
 
-                                    if (autoFixPolicyLocked)
+                                    if (page->_settings.GlobalSettings().IsAutoFixPolicyLocked())
                                     {
                                         return;
                                     }
 
                                     page->_RaiseProtocolEvent("agent_event", agentParams);
                                 }
-                                return; // AgentEvent never falls through to vt_sequence
+                                return;
                             }
 
-                            // isOsc133 path — forward as vt_sequence. A shell
-                            // prompt after an agent exits does not clear the
-                            // pane's last resumable agent-session binding.
-                            if (autoFixPolicyLocked)
+                            // WTA uses prompt-start to reconcile a CLI that exited
+                            // back to its shell. Command exit codes stay local.
+                            if (seqStr == "osc:133;A")
                             {
-                                // Keep raw OSC and diagnostics blocked; only send the content-free failure count.
-                                if (!tabIdStr.empty() &&
-                                    ::TerminalApp::AgentPolicyTelemetry::ShouldRecordBlockedCommandFailure(
-                                        page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled(),
-                                        ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicyState::Blocked,
-                                        seqStr))
+                                Json::Value params;
+                                params["pane_id"] = paneIdStr;
+                                if (!tabIdStr.empty())
                                 {
-                                    Json::Value params;
-                                    params["pane_id"] = paneIdStr;
                                     params["tab_id"] = tabIdStr;
-                                    params["autofix_policy_state"] = "disabled";
-                                    params["autofix_enabled"] = false;
-                                    page->_RaiseProtocolEvent("shell_command_failed", params);
                                 }
-                                return;
+                                params["sequence"] = seqStr;
+                                page->_RaiseProtocolEvent("vt_sequence", params);
                             }
-
-                            // Detection gate: when the user turned error
-                            // detection off ("don't access my shell"), drop
-                            // the OSC 133 command marks here — no Detected
-                            // pill, no forwarding to WTA, no background
-                            // analysis. (Scoped to OSC 133 so AgentEvents,
-                            // a separate channel, keep flowing.) Unlike the
-                            // auto-suggest pref — which still wants the
-                            // Detected pill — detection off means we observe
-                            // nothing.
-                            if (!page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled())
-                                return;
-
-                            Json::Value params;
-                            params["pane_id"] = paneIdStr;
-                            if (!tabIdStr.empty())
-                            {
-                                params["tab_id"] = tabIdStr;
-                            }
-                            params["sequence"] = seqStr;
-                            page->_RaiseProtocolEvent("vt_sequence", params);
                         });
                 });
 

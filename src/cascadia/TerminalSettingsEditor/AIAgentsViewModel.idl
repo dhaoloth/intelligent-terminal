@@ -100,11 +100,10 @@ namespace Microsoft.Terminal.Settings.Editor
         void CancelCustomModelProvider();
         Boolean ShowDelegateModel { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, DelegateModel);
-        IInspectable CurrentAutoErrorHandling;
-        Windows.Foundation.Collections.IObservableVector<EnumEntry> AutoErrorHandlingList { get; };
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, AgentSessionManagementEnabled);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(Boolean, ShowTokenUsageAndCost);
         Boolean CanConfigureAgentSessionManagement { get; };
+        void InitializeShellIntegration();
 
         // Global "Yolo mode" — requests each supported provider's advertised
         // native ACP session mode. WTA never selects a permission option;
@@ -118,11 +117,9 @@ namespace Microsoft.Terminal.Settings.Editor
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
         //   dropdown options are filtered, but the control stays enabled.
         // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
-        // IsAutoErrorHandlingPolicyRestricted: policy removes the send-to-agent option.
         // IsAgentSessionHooksPolicyLocked: the corresponding control is disabled.
         Boolean IsAgentPolicyLocked { get; };
         Boolean IsCustomAgentPolicyLocked { get; };
-        Boolean IsAutoErrorHandlingPolicyRestricted { get; };
         Boolean IsAgentSessionHooksPolicyLocked { get; };
         Boolean IsYoloModePolicyLocked { get; };
 

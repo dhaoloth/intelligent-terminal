@@ -204,7 +204,7 @@ fn admitted_detected_autofix_cancel_restores_only_current_manual_diagnostic() {
 }
 
 #[test]
-fn cancelling_automatic_or_typed_fix_does_not_create_detected_offer() {
+fn cancelling_automatic_or_manual_fix_does_not_create_detected_offer() {
     let _locale = crate::test_support::lock_locale();
     for automatic in [false, true] {
         let mut app = test_app();
@@ -215,7 +215,7 @@ fn cancelling_automatic_or_typed_fix_does_not_create_detected_offer() {
             app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
             complete_autofix_capture(&mut app, "tab");
         } else {
-            app.current_tab_mut().input = "/fix explain this failure".into();
+            app.current_tab_mut().input = "explain this failure".into();
             app.enqueue_input(Some("explain this failure".into()));
             complete_autofix_capture(&mut app, "tab");
         }

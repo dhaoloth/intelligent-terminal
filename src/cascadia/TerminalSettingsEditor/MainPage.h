@@ -73,6 +73,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::UI::Xaml::Media::Brush BackgroundBrush();
         void NavigateToAIAgents();
+        Model::CascadiaSettings AppearanceImportTarget() const { return _settingsClone; }
+        bool ImportTerminalAppearance(const Model::CascadiaSettings& target, const winrt::hstring& sourceSettingsJson);
         void SetAgentProfilesIntroductionPresentationGate(const Editor::AgentProfilesIntroductionPresentationGate& gate);
 
         Windows::Foundation::Collections::IObservableVector<IInspectable> Breadcrumbs() noexcept;

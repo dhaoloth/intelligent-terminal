@@ -2,9 +2,9 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, time::Duration};
 #[cfg(windows)]
 use std::path::PathBuf;
+use std::{collections::BTreeMap, time::Duration};
 use tokio::{io::AsyncReadExt, process::Command};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(12);
@@ -111,16 +111,17 @@ pub(crate) async fn run(
     ssh_port: Option<u16>,
     ssh_user: Option<&str>,
     ssh_identity_file: Option<&str>,
+    ssh_jump_alias: Option<&str>,
 ) -> Result<()> {
     let (target, mut command) = match (wsl_distro, ssh_host) {
         (Some(distro), None) => {
-            if distro.is_empty()
-                || distro.trim() != distro
-                || distro.chars().any(char::is_control)
+            if distro.is_empty() || distro.trim() != distro || distro.chars().any(char::is_control)
             {
                 anyhow::bail!("--wsl-distro must be a non-empty exact distribution name");
             }
-            let target = Target::Wsl { distribution: distro.to_owned() };
+            let target = Target::Wsl {
+                distribution: distro.to_owned(),
+            };
             let mut command = match trusted_wsl_path() {
                 Some(path) => Command::new(path),
                 None => {
@@ -153,7 +154,12 @@ pub(crate) async fn run(
                 .map(|v| validate_value("--ssh-hostname", v))
                 .transpose()?
                 .unwrap_or(host);
-            let target = Target::Ssh { host: host.to_owned() };
+            let jump_alias = ssh_jump_alias
+                .map(|alias| validate_jump_alias(alias, host))
+                .transpose()?;
+            let target = Target::Ssh {
+                host: host.to_owned(),
+            };
             let mut command = match trusted_ssh_path() {
                 Some(path) => Command::new(path),
                 None => {
@@ -181,6 +187,9 @@ pub(crate) async fn run(
                 "-o",
                 "PermitLocalCommand=no",
             ]);
+            if let Some(alias) = jump_alias {
+                command.args(["-J", alias]);
+            }
             if let Some(port) = ssh_port {
                 command.args(["-p".to_owned(), port.to_string()]);
             }
@@ -192,7 +201,12 @@ pub(crate) async fn run(
             }
             if let Some(identity) = ssh_identity_file {
                 let identity = validate_value("--ssh-identity-file", identity)?;
-                command.args(["-o", "PreferredAuthentications=publickey", "-o", "IdentitiesOnly=yes"]);
+                command.args([
+                    "-o",
+                    "PreferredAuthentications=publickey",
+                    "-o",
+                    "IdentitiesOnly=yes",
+                ]);
                 command.args(["-i".to_owned(), identity.to_owned()]);
             }
             if destination != host {
@@ -226,10 +240,20 @@ pub(crate) async fn run(
             return Ok(());
         }
     };
-    let stdout = child.stdout.take().context("probe stdout was not captured")?;
-    let stderr = child.stderr.take().context("probe stderr was not captured")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("probe stdout was not captured")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("probe stderr was not captured")?;
     let completed = tokio::time::timeout(PROBE_TIMEOUT, async {
-        tokio::try_join!(child.wait(), capture_bounded(stdout), capture_bounded(stderr))
+        tokio::try_join!(
+            child.wait(),
+            capture_bounded(stdout),
+            capture_bounded(stderr)
+        )
     })
     .await;
     let (status, stdout, stderr) = match completed {
@@ -298,6 +322,21 @@ fn validate_value<'a>(flag: &str, value: &'a str) -> Result<&'a str> {
         "invalid value for {flag}"
     );
     Ok(value)
+}
+
+fn validate_jump_alias<'a>(alias: &'a str, host: &str) -> Result<&'a str> {
+    anyhow::ensure!(
+        !alias.is_empty()
+            && alias.len() <= 120
+            && !alias.starts_with('-')
+            && !alias.eq_ignore_ascii_case(host)
+            && alias.bytes().any(|byte| byte != b'.')
+            && alias
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte)),
+        "invalid value for --ssh-jump-alias"
+    );
+    Ok(alias)
 }
 
 #[cfg(windows)]
@@ -436,10 +475,9 @@ mod tests {
     fn rejects_missing_duplicate_or_malformed_records() {
         assert!(parse_output(b"noise only\n").is_none());
         assert!(parse_output(b"WTA_NATIVE_AGENT_PROBE_V1:{\"codex\":true}\n").is_none());
-        assert!(parse_output(
-            b"WTA_NATIVE_AGENT_PROBE_V1:{}\nWTA_NATIVE_AGENT_PROBE_V1:{}\n"
-        )
-        .is_none());
+        assert!(
+            parse_output(b"WTA_NATIVE_AGENT_PROBE_V1:{}\nWTA_NATIVE_AGENT_PROBE_V1:{}\n").is_none()
+        );
         assert!(parse_output(b"WTA_NATIVE_AGENT_PROBE_V1:not-json\n").is_none());
     }
 
@@ -451,8 +489,8 @@ mod tests {
 
     #[test]
     fn clap_requires_exactly_one_target_and_rejects_untyped_ssh_flags() {
-        use clap::Parser;
         use crate::cli::args::{Cli, Command};
+        use clap::Parser;
 
         assert!(Cli::try_parse_from(["wta", "probe-native-agents"]).is_err());
         assert!(Cli::try_parse_from([
@@ -503,6 +541,23 @@ mod tests {
             "-oProxyCommand=x"
         ])
         .is_err());
+    }
+
+    #[test]
+    fn validates_jump_aliases_before_using_ssh() {
+        assert_eq!(validate_jump_alias("jump-1", "target").unwrap(), "jump-1");
+        for invalid in [
+            "",
+            "-bad",
+            "bad host",
+            "jump,user",
+            "jump:2222",
+            "a@b",
+            "...",
+            "TARGET",
+        ] {
+            assert!(validate_jump_alias(invalid, "target").is_err(), "{invalid}");
+        }
     }
 
     #[test]

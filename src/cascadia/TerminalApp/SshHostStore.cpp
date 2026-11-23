@@ -176,6 +176,10 @@ namespace Microsoft::Terminal::OpenSsh
                 {
                     entry["usesOpenSshConfig"] = true;
                 }
+                else if (!host.jumpHostAlias.empty())
+                {
+                    entry["jumpHostAlias"] = winrt::to_string(host.jumpHostAlias);
+                }
                 entries.append(std::move(entry));
             }
             root["hosts"] = std::move(entries);
@@ -229,6 +233,11 @@ namespace Microsoft::Terminal::OpenSsh
         {
             return InvalidHostField::IdentityFile;
         }
+        if (!host.jumpHostAlias.empty() &&
+            (!_isConfigAlias(host.jumpHostAlias) || til::equals_insensitive_ascii(host.jumpHostAlias, host.address)))
+        {
+            return InvalidHostField::JumpHostAlias;
+        }
         return InvalidHostField::None;
     }
 
@@ -262,6 +271,11 @@ namespace Microsoft::Terminal::OpenSsh
                 command.append(L" -o PreferredAuthentications=publickey -o PubkeyAuthentication=yes -o IdentitiesOnly=yes -i ");
                 til::append_quoted_argument(command, host.identityFile);
             }
+        }
+        if (!host.usesOpenSshConfig && !host.jumpHostAlias.empty())
+        {
+            command.append(L" -J ");
+            til::append_quoted_argument(command, host.jumpHostAlias);
         }
         command.append(L" -- ");
         til::append_quoted_argument(command, host.address);
@@ -390,7 +404,9 @@ namespace Microsoft::Terminal::OpenSsh
         {
             THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !entry.isObject() || !entry["port"].isUInt());
             const auto& configMode = entry["usesOpenSshConfig"];
+            const auto& jumpHostAlias = entry["jumpHostAlias"];
             THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !configMode.isNull() && !configMode.isBool());
+            THROW_HR_IF(WEB_E_INVALID_JSON_STRING, !jumpHostAlias.isNull() && !jumpHostAlias.isString());
             SavedHost host{
                 _readString(entry, "id"),
                 _readString(entry, "name"),
@@ -400,6 +416,7 @@ namespace Microsoft::Terminal::OpenSsh
                 _readString(entry, "username"),
                 _readString(entry, "identityFile"),
                 configMode.isBool() && configMode.asBool(),
+                jumpHostAlias.isString() ? std::wstring{ winrt::to_hstring(jumpHostAlias.asString()) } : std::wstring{},
             };
             THROW_HR_IF(WEB_E_INVALID_JSON_STRING,
                         host.id.empty() || !ids.insert(host.id).second || ValidateHost(host) != InvalidHostField::None);
@@ -423,7 +440,7 @@ namespace Microsoft::Terminal::OpenSsh
             }
             GUID id{};
             THROW_IF_FAILED(CoCreateGuid(&id));
-            hosts.emplace_back(SavedHost{ ::Microsoft::Console::Utils::GuidToString(id), alias, L"OpenSSH", alias, 22, {}, {}, true });
+            hosts.emplace_back(SavedHost{ ::Microsoft::Console::Utils::GuidToString(id), alias, L"OpenSSH", alias, 22, {}, {}, true, {} });
         }
         if (hosts.size() != originalSize)
         {

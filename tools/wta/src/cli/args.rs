@@ -533,6 +533,9 @@ pub(crate) enum Command {
         /// Explicit SSH identity file.
         #[arg(long, requires = "ssh_host")]
         ssh_identity_file: Option<String>,
+        /// Literal OpenSSH config alias for a jump host.
+        #[arg(long, requires = "ssh_host")]
+        ssh_jump_alias: Option<String>,
     },
     /// Run a built-in agent's native interactive CLI in the current console.
     LaunchAgent {

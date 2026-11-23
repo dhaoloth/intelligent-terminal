@@ -1,0 +1,85 @@
+name: Build x64 MSIX
+
+on:
+  push:
+    branches: [dev/dhaoloth/ssh-agent-workspace]
+    paths:
+      - '.github/workflows/build-msix-x64.yml'
+      - 'src/**'
+      - 'tools/**'
+      - 'build/**'
+      - 'dep/**'
+      - 'oss/**'
+      - 'res/**'
+      - '_build_msix_x64.cmd'
+      - 'OpenConsole.slnx'
+      - 'NuGet.Config'
+      - '*.props'
+      - '*.targets'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: msix-x64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  msix:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 120
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build x64 WTA
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.93.0 --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.93.0 build --locked --release --target x86_64-pc-windows-msvc --manifest-path tools/wta/Cargo.toml
+          exit $LASTEXITCODE
+
+      - name: Build the unsigned x64 package
+        shell: cmd
+        run: |
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          call tools\razzle.cmd
+          if errorlevel 1 exit /b 1
+          nuget restore OpenConsole.slnx -Verbosity quiet -NonInteractive
+          if errorlevel 1 exit /b 1
+          nuget restore dep\nuget\packages.config -Verbosity quiet -NonInteractive
+          if errorlevel 1 exit /b 1
+          call _build_msix_x64.cmd
+          if errorlevel 1 exit /b 1
+
+      - name: Verify package output
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem src/cascadia/CascadiaPackage/AppPackages -Recurse -Filter *.msix -File)
+          if ($packages.Count -ne 1) { throw "Expected one x64 MSIX, found $($packages.Count)." }
+          $package = $packages[0]
+          $digest = (Get-FileHash -Algorithm SHA256 $package.FullName).Hash
+          "Commit: $env:GITHUB_SHA`nPackage: $($package.Name)`nSHA-256: $digest" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload the x64 package and dependencies
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: intelligent-terminal-x64-unsigned-${{ github.sha }}
+          path: |
+            src/cascadia/CascadiaPackage/AppPackages/**/*.msix
+            src/cascadia/CascadiaPackage/AppPackages/**/Dependencies/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload package build log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: msix-x64-build-log-${{ github.run_attempt }}
+          path: _build_msix_x64.log
+          if-no-files-found: ignore
+          retention-days: 7

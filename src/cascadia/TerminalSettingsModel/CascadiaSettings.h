@@ -83,7 +83,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 
     struct SettingsLoader
     {
-        static SettingsLoader Default(const std::string_view& userJSON, const std::string_view& inboxJSON);
+        static SettingsLoader Default(const std::string_view& userJSON, const std::string_view& inboxJSON, bool validateMediaResources = true);
         static std::vector<Model::ExtensionPackage> LoadExtensionPackages();
         SettingsLoader(const std::string_view& userJSON, const std::string_view& inboxJSON);
 
@@ -105,6 +105,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         std::unordered_map<hstring, winrt::com_ptr<implementation::ExtensionPackage>> extensionPackageMap;
         bool duplicateProfile = false;
         bool sshProfilesGenerated = false;
+        bool validateMediaResources{ true };
 
     private:
         struct JsonSettings
@@ -201,6 +202,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void ExpandCommands();
         void UpdateCommandID(const Model::Command& cmd, winrt::hstring newID);
         void ResolveMediaResources() { _validateMediaResources(); }
+        bool ImportAppearanceFromSettingsJson(winrt::hstring sourceSettingsJson);
 
         void LogSettingChanges(bool isJsonLoad) const;
         void LogAgentProviderChanges(const winrt::hstring& previousAcpAgent, const winrt::hstring& previousDelegateAgent) const noexcept;
@@ -219,7 +221,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         void _resolveNewTabMenuProfiles() const;
         void _resolveNewTabMenuProfilesSet(const winrt::Windows::Foundation::Collections::IVector<Model::NewTabMenuEntry> entries, winrt::Windows::Foundation::Collections::IMap<int, Model::Profile>& remainingProfiles, Model::RemainingProfilesEntry& remainingProfilesEntry) const;
 
-        void _validateSettings();
+        void _validateSettings(bool validateMediaResources = true);
         void _validateAllSchemesExist();
         void _resolveSingleMediaResource(OriginTag origin, std::wstring_view basePath, const Model::IMediaResource& resource);
         void _validateMediaResources();

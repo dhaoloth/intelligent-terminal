@@ -26,7 +26,8 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:settings-ui-fixture'
             acpCustomCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
-            autoErrorDetectionEnabled = $false
+            autoErrorDetectionEnabled = $true
+            autoFixEnabled = $true
             agentSessionManagementEnabled = $false
             defaultProfile = '{0caa0dad-35be-5f56-a8ff-afceeeaa6101}'
             disabledProfileSources = @(
@@ -64,6 +65,10 @@ Describe 'Feature §1/§6 Settings editor UI (opened via Ctrl+, accelerator)' -T
         Invoke-SettingsNav -App $script:app -NavItem 'AIAgentsNavItem'
         # The AI Agents page renders the agent picker group (stable AutomationId AcpAgent).
         Test-UiElementExists -App $script:app -Selector 'AcpAgent' -TimeoutSec 8 | Should -BeTrue -Because 'the AI Agents page must show the agent picker'
+        Test-UiElementExists -App $script:app -Selector 'AutoErrorHandling' -TimeoutSec 1 |
+            Should -BeFalse -Because 'legacy diagnostic settings must not restore the removed terminal error controls'
+        Test-UiElementExists -App $script:app -Selector 'InstallShellIntegrationButton' -TimeoutSec 8 |
+            Should -BeTrue -Because 'shell integration remains available through an explicit settings action'
     }
 
     It 'Settings retains the localized Tab Mode control' {

@@ -161,8 +161,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOn);
         TEST_METHOD(AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
-        TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
-        TEST_METHOD(AutoFixPolicyPreservesErrorDetection);
+        TEST_METHOD(LegacyErrorSettingsCannotEnableDiagnostics);
+        TEST_METHOD(BlockedAutoFixPolicyRemainsReadable);
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseForOpenCode);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenDefaultAgentBlocked);
@@ -1738,7 +1738,7 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(defaulted->GlobalSettings().AutoFixEnabled());
     }
 
-    void CustomAgentAndPolicyTests::EffectiveAutoFixFalseWhenDetectionOff()
+    void CustomAgentAndPolicyTests::LegacyErrorSettingsCannotEnableDiagnostics()
     {
         const auto detectionOff = MakeSettings(
             R"("autoErrorDetectionEnabled": false, "autoFixEnabled": true)");
@@ -1748,10 +1748,11 @@ namespace SettingsModelUnitTests
         const auto bothOn = MakeSettings(
             R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
         SetPolicy(MakePolicy());
-        VERIFY_IS_TRUE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
+        VERIFY_IS_FALSE(bothOn->GlobalSettings().EffectiveAutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
     }
 
-    void CustomAgentAndPolicyTests::AutoFixPolicyPreservesErrorDetection()
+    void CustomAgentAndPolicyTests::BlockedAutoFixPolicyRemainsReadable()
     {
         const auto settings = MakeSettings(
             R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
@@ -1761,7 +1762,7 @@ namespace SettingsModelUnitTests
             AgentPolicy::PolicyState::NotConfigured,
             AgentPolicy::PolicyState::Blocked));
 
-        VERIFY_IS_TRUE(settings->GlobalSettings().EffectiveAutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(settings->GlobalSettings().EffectiveAutoErrorDetectionEnabled());
         VERIFY_IS_FALSE(settings->GlobalSettings().EffectiveAutoFixEnabled());
         VERIFY_IS_TRUE(settings->GlobalSettings().IsAutoFixPolicyLocked());
     }

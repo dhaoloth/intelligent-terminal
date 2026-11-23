@@ -208,6 +208,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
             ssh_port,
             ssh_user,
             ssh_identity_file,
+            ssh_jump_alias,
         } => {
             native_probe::run(
                 wsl_distro.as_deref(),
@@ -216,6 +217,7 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 ssh_port,
                 ssh_user.as_deref(),
                 ssh_identity_file.as_deref(),
+                ssh_jump_alias.as_deref(),
             )
             .await
         }

@@ -62,12 +62,6 @@
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
             </DataTemplate>
 
-            <DataTemplate x:Key="AutoErrorHandlingComboBoxTemplate"
-                          x:DataType="local:EnumEntry">
-                <TextBlock Text="{x:Bind EnumName, Mode=OneWay}"
-                           TextWrapping="WrapWholeWords" />
-            </DataTemplate>
-
             <DataTemplate x:Key="AcpModelEntryTemplate"
                           x:DataType="local:AcpModelEntry">
                 <TextBlock Text="{x:Bind DisplayName}" />
@@ -87,31 +81,6 @@
                 <Setter Property="Padding" Value="0" />
                 <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
-            </Style>
-
-            <Style x:Key="AutoErrorHandlingSettingContainerStyle"
-                   TargetType="local:SettingContainer">
-                <Setter Property="Margin" Value="0,4,0,0" />
-                <Setter Property="IsTabStop" Value="False" />
-                <Setter Property="MaxWidth" Value="{StaticResource StandardControlMaxWidth}" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="local:SettingContainer">
-                            <Grid Style="{StaticResource NonExpanderGrid}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <ContentPresenter Margin="0,12,0,12"
-                                                  Content="{TemplateBinding Header}" />
-                                <ContentPresenter Grid.Column="1"
-                                                  HorizontalAlignment="Right"
-                                                  VerticalAlignment="Center"
-                                                  Content="{TemplateBinding Content}" />
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
             </Style>
 
             <Style x:Key="AgentCliSettingContainerStyle"
@@ -508,31 +477,6 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Name="AutoErrorHandling"
-                                    Style="{StaticResource AutoErrorHandlingSettingContainerStyle}">
-                <local:SettingContainer.Header>
-                    <StackPanel>
-                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
-                                   Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingDescription"
-                                   Style="{StaticResource SettingsPageItemDescriptionStyle}" />
-                        <TextBlock x:Uid="AIAgents_PolicyLocked"
-                                   Visibility="{x:Bind ViewModel.IsAutoErrorHandlingPolicyRestricted, Mode=OneWay}"
-                                   Opacity="0.6"
-                                   Margin="0,4,0,0" />
-                    </StackPanel>
-                </local:SettingContainer.Header>
-                <Grid>
-                    <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
-                              AutomationProperties.AccessibilityView="Content"
-                              Width="{StaticResource StandardBoxMinWidth}"
-                              ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
-                              ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
-                              SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
-                              Style="{StaticResource ComboBoxSettingStyle}" />
-                </Grid>
-            </local:SettingContainer>
-
             <local:SettingContainer x:Name="AgentSessionManagement"
                                     x:Uid="AIAgents_SessionManagement">
                 <StackPanel>
@@ -545,6 +489,11 @@
                                Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
+                    <Button x:Uid="AIAgents_InstallShellIntegration"
+                            AutomationProperties.AutomationId="InstallShellIntegrationButton"
+                            HorizontalAlignment="Left"
+                            Margin="0,8,0,0"
+                            Click="{x:Bind ViewModel.InitializeShellIntegration}" />
                 </StackPanel>
             </local:SettingContainer>
 

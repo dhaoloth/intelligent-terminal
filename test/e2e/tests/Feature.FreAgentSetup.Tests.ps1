@@ -1,8 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §0 FRE — the FRE-overlay-specific agent-setup items that ARE automatable via
 # winapp UIA but were previously left manual. The FRE's SECOND page (reached via NextButton) hosts
-# the agent dropdown, the error-detection dropdown, the session-management toggle, and
-# the pane-position picker, all as named XAML controls. Deterministic: assert on those controls /
+# the agent dropdown, the session-management toggle, and the pane-position picker, all as named
+# XAML controls. Deterministic: assert on those controls /
 # their rendered state — no agent/LLM involved.
 #
 # Not covered here (genuinely not cleanly UIA-observable, kept manual/UT):
@@ -54,32 +54,11 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         }
     }
 
-    It 'Error detection is a single dropdown with all three modes' {
-        Test-UiElementExists -App $script:app -Selector 'ErrorDetectionComboBox' -TimeoutSec 8 |
-            Should -BeTrue -Because 'the FRE settings page must expose one error-detection dropdown'
-
-        Invoke-UiElement -App $script:app -Selector 'ErrorDetectionComboBox' | Out-Null
-        Start-Sleep -Milliseconds 800
-        $tree = Get-UiTree -App $script:app -Depth 18
-        foreach ($option in @(
-            @{ Key = 'FreOverlay_ErrorDetectionDetectOption.Content'; Fallback = 'Detect errors' }
-            @{ Key = 'FreOverlay_ErrorDetectionAutoFixOption.Content'; Fallback = 'Detect and fix errors' }
-            @{ Key = 'FreOverlay_ErrorDetectionOffOption.Content'; Fallback = 'Off' }
-        )) {
-            $rx = Get-WtReswTextRegex -Key $option.Key
-            if (-not $rx) { $rx = [regex]::Escape($option.Fallback) }
-            $tree | Should -Match $rx -Because "the error-detection dropdown must include '$($option.Fallback)'"
+    It 'Terminal diagnostics controls are absent from FRE' {
+        foreach ($selector in @('ErrorDetectionComboBox', 'AutoDetectToggle', 'AutoErrorToggle')) {
+            Test-UiElementExists -App $script:app -Selector $selector -TimeoutSec 1 |
+                Should -BeFalse -Because "$selector is no longer part of first-run setup"
         }
-
-        Test-UiElementExists -App $script:app -Selector 'AutoDetectToggle' -TimeoutSec 1 |
-            Should -BeFalse -Because 'the former detection toggle is replaced by the dropdown'
-        Test-UiElementExists -App $script:app -Selector 'AutoErrorToggle' -TimeoutSec 1 |
-            Should -BeFalse -Because 'the subordinate automatic-error setting is removed'
-
-        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
-        (Test-Until -TimeoutSec 5 -IntervalSec 0.2 -Condition {
-            (Get-UiElement -App $script:app -Selector 'ErrorDetectionComboBox').expandState -eq 'collapsed'
-        }) | Should -BeTrue -Because 'the dropdown popup must be dismissed before later setting assertions'
     }
 
     It 'Display preferences are Settings-only' {

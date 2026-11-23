@@ -15,25 +15,16 @@ Describe 'Feature §0 FRE overlay flow' -Tag 'Feature' -Skip:(-not $script:Ready
                 Test-UiElementExists -App $app -Selector 'WelcomePage' -TimeoutSec 10 | Should -BeTrue
                 Test-UiElementExists -App $app -Selector 'NextButton' -TimeoutSec 5 | Should -BeTrue
                 $sidebar = Get-UiElement -App $app -Selector 'SidebarCardTitle'
-                $autofix = Get-UiElement -App $app -Selector 'AutofixCardTitle'
                 $sidebar | Should -Not -BeNullOrEmpty
-                $autofix | Should -Not -BeNullOrEmpty
                 $sidebar.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card2Title.Text')
-                $autofix.name | Should -BeIn @(Get-WtReswTextValues -Key 'FreOverlay_Card1Title.Text')
-                foreach ($name in @('SidebarImage', 'AutofixImage')) {
-                    $image = Get-UiElement -App $app -Selector $name
-                    $image | Should -Not -BeNullOrEmpty
-                    $image.height | Should -BeGreaterThan 0
-                    [math]::Abs($image.width / $image.height - 16.0 / 9.0) |
-                        Should -BeLessThan 0.01 -Because 'the supplied screenshots must retain their 16:9 aspect ratio'
-                }
-                $language = Get-WtSetting -App $app -Key 'language'
-                if (-not $language) { $language = (Get-UICulture).Name }
-                if ($language -match '^(ar|fa|he|ur|ug)(-|$)|^qps-plocm$') {
-                    $sidebar.x | Should -BeGreaterThan $autofix.x -Because 'RTL should mirror the sidebar-first card order'
-                }
-                else {
-                    $sidebar.x | Should -BeLessThan $autofix.x -Because 'Sidebar and its copy must precede Autofix'
+                $sidebarImage = Get-UiElement -App $app -Selector 'SidebarImage'
+                $sidebarImage | Should -Not -BeNullOrEmpty
+                $sidebarImage.height | Should -BeGreaterThan 0
+                [math]::Abs($sidebarImage.width / $sidebarImage.height - 16.0 / 9.0) |
+                    Should -BeLessThan 0.01 -Because 'the supplied screenshot must retain its 16:9 aspect ratio'
+                foreach ($selector in @('AutofixCardTitle', 'AutofixImage')) {
+                    Test-UiElementExists -App $app -Selector $selector -TimeoutSec 1 |
+                        Should -BeFalse -Because 'first-run setup must not promote the removed terminal diagnostics feature'
                 }
             }
             finally { Stop-Terminal -App $app }
@@ -185,8 +176,8 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
             acpAgent = 'custom:fre-tab-mode-fixture'
             acpCustomCommand = "pwsh -NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation)))"
             acpModel = ''
-            autoErrorDetectionEnabled = $false
-            autoFixEnabled = $false
+            autoErrorDetectionEnabled = $true
+            autoFixEnabled = $true
             agentSessionManagementEnabled = $false
             'agentPane.yoloMode' = $false
             'warning.confirmOnClose' = 'never'
@@ -246,7 +237,14 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
                 Should -BeNullOrEmpty -Because "$removed must not remain in the FRE automation tree"
         }
         $previous = $null
-        foreach ($retained in @('AgentComboBox', 'PanePositionComboBox', 'ErrorDetectionComboBox', 'SessionManagementToggle')) {
+        foreach ($removed in @('ErrorDetectionComboBox', 'AutoDetectToggle', 'AutoErrorToggle')) {
+            $window.FindFirst(
+                [System.Windows.Automation.TreeScope]::Descendants,
+                [System.Windows.Automation.PropertyCondition]::new(
+                    [System.Windows.Automation.AutomationElement]::AutomationIdProperty, $removed)) |
+                Should -BeNullOrEmpty -Because "$removed must not remain in the FRE automation tree"
+        }
+        foreach ($retained in @('AgentComboBox', 'PanePositionComboBox', 'SessionManagementToggle')) {
             $control = Get-UiElement -App $script:app -Selector $retained
             $control | Should -Not -BeNullOrEmpty
             $control.name | Should -Not -BeNullOrEmpty
@@ -269,9 +267,6 @@ Describe 'Feature §0 FRE simplified settings' -Tag 'Feature', 'FreTabMode' -Ski
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
             Should -Be 'PanePositionComboBox'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [System.Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
-            Should -Be 'ErrorDetectionComboBox'
         Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
         $sessions = $window.FindFirst(
             [System.Windows.Automation.TreeScope]::Descendants,

@@ -114,7 +114,7 @@ impl QueuedRequest {
     }
 
     /// Admission and insertion exclude exactly the same automatic request.
-    /// A diagnostic activation promotes it; a typed /fix remains independent FIFO work.
+    /// A diagnostic activation promotes it; a manual fix request remains independent FIFO work.
     fn replaces_automatic(&self, entry: &Self) -> bool {
         entry.kind == RequestKind::AutomaticFix
             && entry.source() == self.source()
@@ -593,12 +593,9 @@ impl App {
             cwd: self.source_cwd.clone(),
             source_pane_id: self.source_session_id.clone(),
         };
-        // Attachment tokens belong to the editor, not the /fix user intent.
+        // Attachment tokens belong to the editor, not the manual fix hint.
         let text = if let Some(hint) = manual_fix {
-            commands::parse(&history_text)
-                .filter(|command| command.kind == CommandKind::Fix)
-                .map(|command| command.rest)
-                .unwrap_or(hint)
+            hint
         } else {
             history_text.clone()
         };
@@ -955,7 +952,7 @@ mod tests {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum AutofixTrigger {
         Automatic,
-        Typed,
+        Manual,
         Detected,
     }
 
@@ -1032,10 +1029,9 @@ mod tests {
                     params: serde_json::json!({"sequence": "osc:133;D;1"}),
                 }
             }
-            AutofixTrigger::Typed => {
-                app.current_tab_mut().input = "/fix investigate".into();
-                app.current_tab_mut().cursor_pos = "/fix investigate".len();
-                AppEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
+            AutofixTrigger::Manual => {
+                app.submit_manual_fix_for_test("investigate".into());
+                AppEvent::Tick
             }
             AutofixTrigger::Detected => {
                 app.emit_autofix_state_detected("queue-tab", "source", "explicit failure");
@@ -1054,7 +1050,7 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         for kind in [
             AutofixTrigger::Automatic,
-            AutofixTrigger::Typed,
+            AutofixTrigger::Manual,
             AutofixTrigger::Detected,
         ] {
             for connecting in [false, true] {
@@ -1116,7 +1112,7 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         for kind in [
             AutofixTrigger::Automatic,
-            AutofixTrigger::Typed,
+            AutofixTrigger::Manual,
             AutofixTrigger::Detected,
         ] {
             let (mut app, mut rx) = app();
@@ -1145,7 +1141,7 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         for kind in [
             AutofixTrigger::Automatic,
-            AutofixTrigger::Typed,
+            AutofixTrigger::Manual,
             AutofixTrigger::Detected,
         ] {
             let (mut app, mut rx) = app();
@@ -1191,7 +1187,7 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         for kind in [
             AutofixTrigger::Automatic,
-            AutofixTrigger::Typed,
+            AutofixTrigger::Manual,
             AutofixTrigger::Detected,
         ] {
             let (mut app, mut rx) = app();
@@ -1205,7 +1201,7 @@ mod tests {
             let event = admission_event(&mut app, kind);
             // Multiple preparations share the event budget.
             app.handle_event(event);
-            enter(&mut app, "/fix second");
+            app.submit_manual_fix_for_test("second".into());
             let tokens: Vec<_> = app
                 .current_tab()
                 .pending_autofix_captures
@@ -1406,7 +1402,7 @@ mod tests {
                         _ => {}
                     }
                     if typed {
-                        enter(&mut app, "/fix investigate");
+                        app.submit_manual_fix_for_test("investigate".into());
                     } else {
                         app.enqueue_autofix(
                             "queue-tab",
@@ -1439,7 +1435,7 @@ mod tests {
         let (mut app, mut rx) = app();
         app.show_welcome_hint = false;
         app.source_session_id = Some("source".into());
-        enter(&mut app, "/fix investigate");
+        app.submit_manual_fix_for_test("investigate".into());
         assert_eq!(queued_info_count(&app), 0);
         enter(&mut app, "follow up");
         assert_eq!(
@@ -1476,7 +1472,7 @@ mod tests {
         ] {
             for (text, kind) in [
                 ("explain ", RequestKind::Prompt),
-                ("/fix investigate ", RequestKind::ManualFix),
+                ("investigate ", RequestKind::ManualFix),
                 ("/review changes ", RequestKind::AgentCommand),
             ] {
                 let (mut app, mut rx) = app();
@@ -1506,10 +1502,14 @@ mod tests {
                 let cursor = tab.cursor_pos;
                 let ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
                 tab.refresh_command_popup();
-                app.handle_event(AppEvent::Key(KeyEvent::new(
-                    KeyCode::Enter,
-                    KeyModifiers::NONE,
-                )));
+                if kind == RequestKind::ManualFix {
+                    app.enqueue_input(Some("investigate".into()));
+                } else {
+                    app.handle_event(AppEvent::Key(KeyEvent::new(
+                        KeyCode::Enter,
+                        KeyModifiers::NONE,
+                    )));
+                }
                 let tab = app.current_tab();
                 assert!(rx.try_recv().is_err());
                 assert!(tab.turn.is_idle());
@@ -1686,82 +1686,6 @@ mod tests {
         assert_eq!(app.current_tab().input, "keep my draft");
         assert!(!app.queue_blocks_session_change());
         assert!(rx.try_recv().is_err());
-    }
-
-    #[test]
-    fn typed_fix_history_replays_command_with_fresh_capture_without_image_tokens() {
-        let _locale = crate::test_support::lock_locale();
-        for input in [
-            "/fix ",
-            "/fix explain why this failed",
-            "/fix first\nsecond ",
-        ] {
-            for with_image in [false, true] {
-                for completed in [false, true] {
-                    let (mut app, mut rx) = app();
-                    app.show_welcome_hint = false;
-                    app.source_session_id = Some("original-source".into());
-                    let tab = app.current_tab_mut();
-                    tab.replace_input(input.into());
-                    if with_image {
-                        tab.attachments.insert_image(
-                            &mut tab.input,
-                            &mut tab.cursor_pos,
-                            crate::clipboard_image::PastedImage {
-                                data_base64: "aW1hZ2U=".into(),
-                                mime_type: "image/png".into(),
-                                label: "failure.png".into(),
-                            },
-                        );
-                    }
-                    app.handle_event(AppEvent::Key(KeyEvent::new(
-                        KeyCode::Enter,
-                        KeyModifiers::NONE,
-                    )));
-                    assert_eq!(
-                        app.current_tab().pending_autofix_captures[0].kind,
-                        RequestKind::ManualFix
-                    );
-                    if completed {
-                        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
-                        assert_eq!(rx.try_recv().unwrap().images.len(), usize::from(with_image));
-                        end(&mut app);
-                    } else {
-                        enter(&mut app, "/stop");
-                        assert!(app.current_tab().prompt_queue.entries.is_empty());
-                        assert!(app.current_tab().pending_autofix_captures.is_empty());
-                        assert!(!app.pending_queue_paused());
-                    }
-                    app.source_session_id = Some("retry-source".into());
-                    app.handle_event(AppEvent::Key(KeyEvent::new(
-                        KeyCode::Up,
-                        KeyModifiers::NONE,
-                    )));
-                    assert_eq!(app.current_tab().input, input);
-                    assert!(app.current_tab().attachments.is_empty());
-                    app.handle_event(AppEvent::Key(KeyEvent::new(
-                        KeyCode::Enter,
-                        KeyModifiers::NONE,
-                    )));
-                    let entry = &app.current_tab().pending_autofix_captures[0];
-                    assert_eq!(entry.kind, RequestKind::ManualFix);
-                    assert!(entry.submission.autofix_snapshot.is_none());
-                    assert!(rx.try_recv().is_err());
-                    super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
-                    let replay = rx.try_recv().unwrap();
-                    assert_eq!(replay.text, commands::parse(input).unwrap().rest);
-                    assert_eq!(
-                        replay.autofix_text_kind,
-                        Some(crate::protocol::acp::client::AutofixTextKind::UserRequest)
-                    );
-                    assert_eq!(
-                        replay.autofix_snapshot.unwrap().source_pane_id(),
-                        "retry-source"
-                    );
-                    assert!(replay.images.is_empty());
-                }
-            }
-        }
     }
 
     #[test]
@@ -2192,7 +2116,7 @@ mod tests {
             label: "sample.png".into(),
         };
         let tab = app.current_tab_mut();
-        tab.input = "/fix investigate ".into();
+        tab.input = "investigate ".into();
         tab.cursor_pos = tab.input.len();
         tab.attachments
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image.clone());
@@ -2222,12 +2146,12 @@ mod tests {
     }
 
     #[test]
-    fn typed_fixes_capture_before_dispatch_and_preserve_fifo_without_text_deduplication() {
+    fn manual_fixes_capture_before_dispatch_and_preserve_fifo_without_text_deduplication() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         app.source_session_id = Some("source".into());
-        enter(&mut app, "/fix investigate");
-        enter(&mut app, "/fix investigate");
+        app.submit_manual_fix_for_test("investigate".into());
+        app.submit_manual_fix_for_test("investigate".into());
         let ids: Vec<_> = app
             .current_tab()
             .pending_autofix_captures
@@ -2260,7 +2184,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_fix_reserves_snapshot_budget_and_preserves_rejected_draft_and_images() {
+    fn manual_fix_reserves_snapshot_budget_and_preserves_rejected_draft_and_images() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
@@ -2275,7 +2199,7 @@ mod tests {
             label: "sample.png".into(),
         };
         let tab = app.current_tab_mut();
-        tab.input = "/fix investigate ".into();
+        tab.input = "investigate ".into();
         tab.cursor_pos = tab.input.len();
         tab.attachments
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image.clone());
@@ -2390,7 +2314,7 @@ mod tests {
     }
 
     #[test]
-    fn typed_fix_never_promotes_automatic_work_to_bypass_the_item_limit() {
+    fn manual_fix_never_promotes_automatic_work_to_bypass_the_item_limit() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, _) = app();
         hold(&mut app);
@@ -2403,8 +2327,9 @@ mod tests {
         let token = app.current_tab().prompt_queue.entries[MAX_REQUESTS - 1]
             .submission
             .cancellation_token();
-        enter(&mut app, "/fix investigate");
-        assert_eq!(app.current_tab().input, "/fix investigate");
+        app.current_tab_mut().replace_input("investigate".into());
+        app.submit_manual_fix_for_test("investigate".into());
+        assert_eq!(app.current_tab().input, "investigate");
         assert_eq!(app.current_tab().prompt_queue.entries.len(), MAX_REQUESTS);
         assert_eq!(
             app.current_tab().prompt_queue.entries[MAX_REQUESTS - 1].kind,
@@ -2414,12 +2339,12 @@ mod tests {
     }
 
     #[test]
-    fn typed_fix_late_capture_cannot_restore_cancelled_invalidated_or_reset_requests() {
+    fn manual_fix_late_capture_cannot_restore_cancelled_invalidated_or_reset_requests() {
         let _locale = crate::test_support::lock_locale();
         for invalidation in ["cancel", "source", "reset", "failure"] {
             let (mut app, mut rx) = app();
             app.source_session_id = Some("source".into());
-            enter(&mut app, "/fix investigate");
+            app.submit_manual_fix_for_test("investigate".into());
             let entry = &app.current_tab().pending_autofix_captures[0];
             let id = entry.submission.id;
             let token = entry.submission.cancellation_token();
@@ -2453,12 +2378,12 @@ mod tests {
     }
 
     #[test]
-    fn typed_fix_capture_survives_tab_rename_without_rebinding_source() {
+    fn manual_fix_capture_survives_tab_rename_without_rebinding_source() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         app.owner_tab_id = Some("queue-tab".into());
         app.source_session_id = Some("original-source".into());
-        enter(&mut app, "/fix investigate");
+        app.submit_manual_fix_for_test("investigate".into());
         let id = app.current_tab().pending_autofix_captures[0].submission.id;
         app.rename_tab_session("queue-tab", "renamed", Some("new-window"));
         app.source_session_id = Some("other-source".into());
@@ -2767,7 +2692,7 @@ mod tests {
     fn failed_capture_warning_survives_immediate_follower_dispatch() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
-        enter(&mut app, "/fix investigate");
+        app.submit_manual_fix_for_test("investigate".into());
         let id = app.current_tab().pending_autofix_captures[0].submission.id;
         enter(&mut app, "unrelated follower");
         app.handle_event(AppEvent::AutofixSnapshotReady {
@@ -2789,7 +2714,7 @@ mod tests {
         let (mut app, mut rx) = app();
         hold(&mut app);
         for _ in 0..MAX_REQUESTS {
-            enter(&mut app, "/fix investigate");
+            app.submit_manual_fix_for_test("investigate".into());
         }
         assert_eq!(
             app.current_tab().pending_autofix_captures.len(),
@@ -2808,13 +2733,14 @@ mod tests {
         app.discard_pending_inputs();
         assert!(tokens.iter().all(|token| token.is_cancelled()));
 
-        enter(&mut app, "/fix investigate");
+        app.submit_manual_fix_for_test("investigate".into());
         let capture = &mut app.current_tab_mut().pending_autofix_captures[0];
         let padding = MAX_PAYLOAD_BYTES - capture.bytes();
         capture.display_text.push_str(&"x".repeat(padding));
         assert_eq!(capture.bytes(), MAX_PAYLOAD_BYTES);
-        enter(&mut app, "/fix keep this too");
-        assert_eq!(app.current_tab().input, "/fix keep this too");
+        app.current_tab_mut().replace_input("keep this too".into());
+        app.submit_manual_fix_for_test("keep this too".into());
+        assert_eq!(app.current_tab().input, "keep this too");
         assert_eq!(app.current_tab().pending_autofix_captures.len(), 1);
         assert_eq!(app.pending_input_count(), 0);
         assert!(rx.try_recv().is_err());
@@ -3031,7 +2957,7 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         app.source_session_id = Some("source".into());
-        app.cmd_fix(false, "manual investigation".into());
+        app.submit_manual_fix_for_test("manual investigation".into());
         super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
         let manual = rx.try_recv().unwrap();
         app.enqueue_autofix("queue-tab", "source", "background failure", false);

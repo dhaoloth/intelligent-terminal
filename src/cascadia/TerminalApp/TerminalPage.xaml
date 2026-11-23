@@ -126,7 +126,6 @@
               HorizontalAlignment="Stretch">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -170,57 +169,9 @@
                 </Grid>
             </Button>
 
-            <!-- Button 2: Diagnostics / Warning — clickable once a fix is armed.
-                 Starts Collapsed: the group only appears while the active tab
-                 has error detection enabled and an error to report, even
-                 while its agent is connecting. -->
-            <StackPanel x:Name="DiagnosticsGroup"
-                        Grid.Column="1"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center"
-                        Spacing="6"
-                        Visibility="Collapsed">
-                <Button x:Name="DiagnosticsButton"
-                        MinWidth="32"
-                        Height="32"
-                        Padding="6,0"
-                        Background="Transparent"
-                        BorderBrush="Transparent"
-                        IsEnabled="False"
-                        ToolTipService.ToolTip="Diagnostics"
-                        Click="_DiagnosticsButtonOnClick">
-                    <Button.Resources>
-                        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
-                        <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
-                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
-                        <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
-                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
-                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
-                    </Button.Resources>
-                    <!-- Icon + label inside the same Button so clicking
-                         the label has the same effect as clicking the
-                         triangle (one hover/focus region, one hit
-                         target). The label toggles its own Visibility
-                         per state via _UpdateBottomBarState. -->
-                    <StackPanel Orientation="Horizontal" Spacing="6"
-                                VerticalAlignment="Center">
-                        <FontIcon x:Name="DiagnosticsIcon"
-                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                  FontSize="16"
-                                  Glyph="&#xE7BA;"
-                                  Foreground="{ThemeResource SystemFillColorCautionBrush}" />
-                        <TextBlock x:Name="DiagnosticsLabel"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"
-                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                   Visibility="Collapsed" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
-
             <StackPanel x:Name="UsageGroup"
                         x:Uid="UsageGroup"
-                        Grid.Column="2"
+                        Grid.Column="1"
                         Orientation="Horizontal"
                         HorizontalAlignment="Right"
                         VerticalAlignment="Center"
@@ -229,7 +180,7 @@
                         Visibility="Collapsed" />
 
             <Button x:Name="SessionToggleButton"
-                    Grid.Column="3"
+                    Grid.Column="2"
                     Width="32"
                     Height="32"
                     Padding="0"

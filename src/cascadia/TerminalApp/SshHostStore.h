@@ -23,6 +23,7 @@ namespace Microsoft::Terminal::OpenSsh
         std::wstring username;
         std::wstring identityFile;
         bool usesOpenSshConfig{ false };
+        std::wstring jumpHostAlias;
 
         bool operator==(const SavedHost&) const = default;
     };
@@ -36,6 +37,7 @@ namespace Microsoft::Terminal::OpenSsh
         Port,
         Username,
         IdentityFile,
+        JumpHostAlias,
     };
 
     InvalidHostField ValidateHost(const SavedHost& host);

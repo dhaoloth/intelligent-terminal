@@ -1282,11 +1282,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             ShowLoadWarningsDialog.raise(*this, _settingsClone.Warnings());
         }
 
-        // Both enabled modes require OSC 133 shell integration.
-        if (_settingsClone.GlobalSettings().AutoErrorDetectionEnabled())
+    }
+
+    bool MainPage::ImportTerminalAppearance(const Model::CascadiaSettings& target, const winrt::hstring& sourceSettingsJson)
+    {
+        if (target != _settingsClone || !_settingsClone.ImportAppearanceFromSettingsJson(sourceSettingsJson))
         {
-            InitShellIntegrationRequested.raise(*this, ShellIntegrationTarget::Pwsh);
+            return false;
         }
+        _colorSchemesPageVM.UpdateSettings(_settingsClone);
+        _profileDefaultsVM = nullptr;
+        return true;
     }
 
     void MainPage::ResetButton_Click(const IInspectable& /*sender*/, const RoutedEventArgs& /*args*/)

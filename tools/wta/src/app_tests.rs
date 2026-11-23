@@ -5610,7 +5610,7 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
         (HashSet::from(["manual-fix-session".to_string()]), false),
     );
 
-    manual.cmd_fix(false, String::new());
+    manual.submit_manual_fix_for_test(String::new());
     let tab_id = manual.active_tab_key().to_owned();
     complete_autofix_capture(&mut manual, &tab_id);
 
@@ -5671,7 +5671,7 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
     manual.current_tab_mut().config_pending_id = Some("mode".into());
     manual.current_tab_mut().native_yolo_config_pending = true;
 
-    manual.cmd_fix(false, String::new());
+    manual.submit_manual_fix_for_test(String::new());
     let tab_id = manual.active_tab_key().to_owned();
     complete_autofix_capture(&mut manual, &tab_id);
 
@@ -11747,7 +11747,7 @@ fn hookless_manual_fix_still_submits_when_auto_suggest_is_disabled() {
     app.source_session_id = Some("hookless-shell".into());
     bind_test_session(&mut app, "chat-without-hooks");
 
-    app.cmd_fix(false, "explain the last failure".into());
+    app.submit_manual_fix_for_test("explain the last failure".into());
     let tab_id = app.active_tab_key().to_owned();
     complete_autofix_capture(&mut app, &tab_id);
 
@@ -14092,12 +14092,7 @@ fn render_prompt_queue_excludes_unblocked_autofix_preparation() {
         app.show_welcome_hint = false;
         app.source_session_id = Some("failed-source".into());
         if typed {
-            app.current_tab_mut()
-                .replace_input("/fix investigate".into());
-            app.handle_event(AppEvent::Key(KeyEvent::new(
-                KeyCode::Enter,
-                KeyModifiers::NONE,
-            )));
+            app.submit_manual_fix_for_test("investigate".into());
         } else {
             app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
         }
@@ -21842,7 +21837,7 @@ fn manual_fix_uses_the_helpers_captured_source_target() {
     app.state = ConnectionState::Connected;
     app.source_session_id = Some("captured-source-pane".into());
 
-    app.cmd_fix(false, String::new());
+    app.submit_manual_fix_for_test(String::new());
     let tab_id = app.active_tab_key().to_owned();
     complete_autofix_capture(&mut app, &tab_id);
 
@@ -25398,24 +25393,27 @@ fn queued_prompt_lost_to_rebind_is_released_only_after_transport_retirement() {
 }
 
 #[test]
-fn manual_fix_does_not_replace_a_cancelling_turn() {
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-
+fn ordinary_prompt_does_not_replace_a_cancelling_turn() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "stop this");
     app.turn_cancel(DEFAULT_TAB_ID);
     let cancelling = app.current_tab().turn.clone();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
-    app.current_tab_mut().input = "/fix".into();
-    app.current_tab_mut().cursor_pos = "/fix".len();
+    app.current_tab_mut().input = "continue the investigation".into();
+    app.current_tab_mut().cursor_pos = "continue the investigation".len();
 
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.enqueue_input(None);
 
     assert_eq!(app.current_tab().turn, cancelling);
     assert!(
         prompt_rx.try_recv().is_err(),
-        "/fix must not enqueue a prompt while cancellation is settling"
+        "a prompt must wait while cancellation is settling"
+    );
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "continue the investigation"
     );
 }
 

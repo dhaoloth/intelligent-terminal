@@ -45,6 +45,8 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ColorScheme);
         TEST_METHOD(Actions);
         TEST_METHOD(CascadiaSettings);
+        TEST_METHOD(ImportWindowsTerminalDefaultAppearance);
+        TEST_METHOD(ImportWindowsTerminalAppearanceWithSchemeCollision);
         TEST_METHOD(LegacyFontSettings);
 
         TEST_METHOD(RoundtripReloadEnvVars);
@@ -751,6 +753,115 @@ namespace SettingsModelUnitTests
         const auto result{ settings->ToJson() };
         VERIFY_ARE_EQUAL(toString(removeSchema(VerifyParseSucceeded(settingsString))),
                          toString(removeSchema(result)));
+    }
+
+    void SerializationTests::ImportWindowsTerminalDefaultAppearance()
+    {
+        auto settings = CascadiaSettings::LoadDefaults();
+        static constexpr std::string_view source{ R"({
+            "defaultProfile": "{11111111-1111-1111-1111-111111111111}",
+            "profiles": {
+                "defaults": {
+                    "font": { "face": "Example Mono", "size": 17 },
+                    "opacity": 72,
+                    "cursorShape": "vintage",
+                    "cursorHeight": 65,
+                    "intenseTextStyle": "all"
+                },
+                "list": [{
+                    "guid": "{11111111-1111-1111-1111-111111111111}",
+                    "name": "Windows Terminal Default",
+                    "commandline": "cmd.exe",
+                    "colorScheme": "Campbell"
+                }]
+            }
+        })" };
+
+        VERIFY_IS_TRUE(settings.ImportAppearanceFromSettingsJson(winrt::to_hstring(source)));
+        const auto defaults = settings.ProfileDefaults();
+        VERIFY_ARE_EQUAL(L"Example Mono", defaults.FontInfo().FontFace());
+        VERIFY_ARE_EQUAL(17.0f, defaults.FontInfo().FontSize());
+        VERIFY_ARE_EQUAL(0.72f, defaults.DefaultAppearance().Opacity());
+        VERIFY_ARE_EQUAL(winrt::Microsoft::Terminal::Core::CursorStyle::Vintage, defaults.DefaultAppearance().CursorShape());
+        VERIFY_ARE_EQUAL(65u, defaults.DefaultAppearance().CursorHeight());
+        VERIFY_ARE_EQUAL(L"Campbell", defaults.DefaultAppearance().DarkColorSchemeName());
+
+        static constexpr std::string_view malformed{ R"({ "profiles": [ )" };
+        VERIFY_IS_FALSE(settings.ImportAppearanceFromSettingsJson(winrt::to_hstring(malformed)));
+        VERIFY_ARE_EQUAL(L"Example Mono", settings.ProfileDefaults().FontInfo().FontFace());
+
+        static constexpr std::string_view legacyProfiles{ R"({
+            "profiles": [{
+                "guid": "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}",
+                "name": "Windows PowerShell",
+                "commandline": "powershell.exe",
+                "fontFace": "Legacy Mono"
+            }]
+        })" };
+        VERIFY_IS_TRUE(settings.ImportAppearanceFromSettingsJson(winrt::to_hstring(legacyProfiles)));
+        VERIFY_ARE_EQUAL(L"Legacy Mono", settings.ProfileDefaults().FontInfo().FontFace());
+    }
+
+    void SerializationTests::ImportWindowsTerminalAppearanceWithSchemeCollision()
+    {
+        auto settings = CascadiaSettings::LoadDefaults();
+        const Model::ColorScheme existingScheme{ L"Custom" };
+        settings.GlobalSettings().AddColorScheme(existingScheme);
+        static constexpr std::string_view source{ R"({
+            "defaultProfile": "{22222222-2222-2222-2222-222222222222}",
+            "profiles": {
+                "defaults": { "font": { "face": "Imported Mono" } },
+                "list": [{
+                    "guid": "{22222222-2222-2222-2222-222222222222}",
+                    "name": "Windows Terminal Default",
+                    "commandline": "cmd.exe",
+                    "colorScheme": "Custom"
+                }]
+            },
+            "schemes": [{
+                "name": "Custom",
+                "foreground": "#AABBCC",
+                "background": "#102030",
+                "cursorColor": "#FFFFFF",
+                "selectionBackground": "#334455",
+                "black": "#010203",
+                "red": "#C50F1F",
+                "green": "#13A10E",
+                "yellow": "#C19C00",
+                "blue": "#0037DA",
+                "purple": "#881798",
+                "cyan": "#3A96DD",
+                "white": "#CCCCCC",
+                "brightBlack": "#767676",
+                "brightRed": "#E74856",
+                "brightGreen": "#16C60C",
+                "brightYellow": "#F9F1A5",
+                "brightBlue": "#3B78FF",
+                "brightPurple": "#B4009E",
+                "brightCyan": "#61D6D6",
+                "brightWhite": "#F2F2F2"
+            }]
+        })" };
+
+        VERIFY_IS_TRUE(settings.ImportAppearanceFromSettingsJson(winrt::to_hstring(source)));
+        const auto defaults = settings.ProfileDefaults();
+        VERIFY_ARE_EQUAL(L"Windows Terminal - Custom", defaults.DefaultAppearance().DarkColorSchemeName());
+        VERIFY_IS_TRUE(settings.GlobalSettings().ColorSchemes().HasKey(L"Windows Terminal - Custom"));
+        const auto importedScheme = settings.GlobalSettings().ColorSchemes().TryLookup(L"Windows Terminal - Custom");
+        VERIFY_IS_NOT_NULL(importedScheme);
+        VERIFY_ARE_EQUAL(til::color(0xAA, 0xBB, 0xCC, 255), til::color{ importedScheme.Foreground() });
+        VERIFY_ARE_EQUAL(L"Imported Mono", defaults.FontInfo().FontFace());
+
+        bool serializedImportedScheme = false;
+        const auto serializedSettings = settings.ToJson();
+        for (const auto& scheme : serializedSettings["schemes"])
+        {
+            serializedImportedScheme |= scheme["name"].asString() == "Windows Terminal - Custom";
+        }
+        VERIFY_IS_TRUE(serializedImportedScheme);
+
+        VERIFY_IS_TRUE(settings.ImportAppearanceFromSettingsJson(winrt::to_hstring(source)));
+        VERIFY_IS_FALSE(settings.GlobalSettings().ColorSchemes().HasKey(L"Windows Terminal - Custom (2)"));
     }
 
     void SerializationTests::LegacyFontSettings()

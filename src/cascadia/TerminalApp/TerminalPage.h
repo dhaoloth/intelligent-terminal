@@ -505,20 +505,11 @@ namespace winrt::TerminalApp::implementation
         // but reflects the active tab's agent-pane state, so its display
         // toggles each time the user switches tabs.
         //
-        // The bottom-bar click handlers (`_AgentToggleButtonOnClick`,
-        // `_SessionToggleButtonOnClick`, `_DiagnosticsButtonOnClick`)
-        // target the *active* tab's AgentPaneContent (or open one if
-        // it doesn't exist yet).
         void _AgentToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                        const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
         void _SessionToggleButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
                                          const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        void _DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& sender,
-                                       const winrt::Windows::UI::Xaml::RoutedEventArgs& eventArgs);
-        // Recomputes the bottom bar's visibility / toggle-lit / diagnostics
-        // affordance from the active tab's AgentPaneContent (or absence
-        // thereof). Called on tab switch and whenever an AgentPaneContent
-        // raises `StateChanged` for the active tab.
+        // Updates the bottom bar after a tab switch or active pane state change.
         void _UpdateBottomBarState();
         // Refresh ONLY the bottom-bar visibility (show on terminal/agent
         // tabs, collapse on Settings/etc.). Safe to call synchronously
@@ -626,26 +617,7 @@ namespace winrt::TerminalApp::implementation
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
-        // Snapshot of EffectiveAutoErrorDetectionEnabled at last
-        // SetSettings call. Drives the silent shell-integration reconcile
-        // (Install when ON, Uninstall when OFF) on first-load and on
-        // every change — handles both Settings-UI toggle-off (which
-        // previously left our $PROFILE block behind) and roaming
-        // settings.json arriving on a fresh machine (which previously
-        // never ran the install).
-        bool _lastAutoErrorDetectionEnabled{ false };
-        bool _lastAutoErrorDetectionHasExplicit{ false };
-        bool _autoErrorDetectionSnapshotInitialized{ false };
-        // Cross-thread "latest desired state" for the shell-integration
-        // reconcile. SetSettings (UI thread) stores the current value
-        // *before* spawning the fire-and-forget reconcile; the coroutine
-        // reads this inside the serialization mutex so the last lock
-        // acquirer always observes the most recent setting. Together
-        // with idempotent Install/Uninstall this guarantees the on-disk
-        // state matches the latest setting even when reconciles arrive
-        // back-to-back (e.g. file-watcher reload storms).
-        std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
-        std::mutex _shellIntegrationReconcileMutex;
+        std::mutex _shellIntegrationInstallMutex;
         bool _agentLifecycleOperationInProgress{ false };
         details::CoalescedRequest _pendingAgentStackRestart;
         struct _PendingAgentRetirement
@@ -954,9 +926,9 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::UI::Xaml::Controls::ContentDialogResult> _ShowLargePasteWarningDialog();
 
         safe_void_coroutine _InitShellIntegration(const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
-        safe_void_coroutine _ReconcileShellIntegration();
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
+
 
         void _CreateNewTabFlyout();
         void _InitializeSshHosts();

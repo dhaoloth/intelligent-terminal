@@ -1,141 +1,39 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist §3 "Shell integration and detection" — the two pure-[E2E] items that had
-# no automated coverage:
-#   * "PowerShell shell integration installed" — a shell-integrated pane emits command-finished
-#     OSC 133;D;<exit> marks (the foundation autofix detection relies on).
-#   * "Missing shell integration is safe" — a non-integrated shell (cmd.exe) that fails a
-#     command does not crash Windows Terminal or break the protocol surface.
+# Release checklist §3 "Shell integration" — shell prompt-start events are
+# forwarded to the protocol, while command exit codes stay local to Terminal.
+# Missing shell integration remains safe for a non-integrated cmd.exe pane.
 #
 # Deterministic: no agent/LLM involved — assert on the wtcli event stream + protocol liveness.
 #   Invoke-Pester test/e2e/tests -Tag Feature
 
 BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) }
 
-Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §3 Shell integration' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        # autofix OFF: this suite is about the shell-integration marks themselves, not the
-        # downstream autofix UI (which is covered by Feature.AutofixPane.Tests.ps1). No agent is
-        # pinned — these tests never open the agent pane, so leaving acpAgent at its default avoids
+        # No agent is pinned; this suite never opens the agent pane, so the default avoids
         # an unnecessary copilot install/auth dependency (the pre-warmed helper is irrelevant here).
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ autoFixEnabled = $false }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'PowerShell shell integration emits a command-finished mark on failure (OSC 133;D;<nonzero>)' {
-        # The default pane runs the IT PowerShell profile with shell integration enabled, so a
-        # failing command must surface an OSC 133;D mark with a non-zero exit code on the stream.
+    It 'PowerShell prompt-start is forwarded but command completion remains local' {
         $pane = Get-ActivePane -App $script:app
         $sid = $pane.session_id
         $listener = Start-WtEventListener -App $script:app
         try {
-            Invoke-FailingCommand -App $script:app -SessionId $sid -Command "nope$(Get-Random) status" | Out-Null
-            # Scope to the active pane (the event's pane_id == the pane session_id) so an unrelated
-            # OSC 133;D failure mark (e.g. from profile/startup activity in another pane) can't
-            # satisfy the assertion.
-            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $pane.session_id -TimeoutSec 20
-            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;'
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-    }
-
-    It 'PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5.1' {
-        # Windows PowerShell 5.1 stamps HistoryId = -1 on .NET-exception-class errors. Open the
-        # in-box host explicitly so this regression cannot accidentally run against pwsh 7.
-        $tab = New-WtTab -App $script:app -Command 'powershell.exe' -Title 'winps51-regex'
-        $sid = $tab.session_id
-        $listener = $null
-        try {
-            # Seed $LASTEXITCODE with 0, then raise a PowerShell-level error that does not update it.
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command 'cmd /c "exit 0"' -SettleSec 10 | Out-Null
-            $listener = Start-WtEventListener -App $script:app
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command "'x' -match '['" | Out-Null
-
-            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
-            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
-        }
-        finally {
-            if ($listener) { Stop-WtEventListener -Listener $listener }
-            Close-WtPane -App $script:app -SessionId $sid
-        }
-    }
-
-    It 'PowerShell parser errors emit one command-finished mark per malformed command' {
-        $sid = (Get-ActivePane -App $script:app).session_id
-        $malformedCommand = "'x'.like '*x*'"
-
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command $malformedCommand | Out-Null
-            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
-            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
-            Start-Sleep -Seconds 2
+            $output = "shell-integration-$([guid]::NewGuid().ToString('N'))"
+            Invoke-RunCommand -App $script:app -SessionId $sid -Command "echo $output" -SettleSec 8 | Out-Null
+            Assert-Pane -App $script:app -SessionId $sid -Match $output -TimeoutSec 10
+            $prompt = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
+                $_.method -eq 'vt_sequence' -and "$($_.params.pane_id)" -eq "$sid" -and
+                "$($_.params.sequence)" -eq 'osc:133;A'
+            }
+            $prompt.params.sequence | Should -Be 'osc:133;A'
             @(Get-WtEvents -Listener $listener -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq "$sid" -and
-                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
-                }) | Should -HaveCount 1
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Send-WtKeys -App $script:app -SessionId $sid -Keys @('Enter') | Out-Null
-            Start-Sleep -Seconds 3
-            $duplicateFailures = @(Get-WtEvents -Listener $listener -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq "$sid" -and
-                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
-                })
-            $duplicateFailures | Should -BeNullOrEmpty
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command $malformedCommand | Out-Null
-            $ev = Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20
-            "$($ev.params.sequence)" | Should -Match '(?i)osc:133;D;(?!0(\b|;|$))'
-            Start-Sleep -Seconds 2
-            @(Get-WtEvents -Listener $listener -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq "$sid" -and
-                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
-                }) | Should -HaveCount 1
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-    }
-
-    It 'PowerShell commands that handle a non-terminating error still emit a zero-exit mark' {
-        $sid = (Get-ActivePane -App $script:app).session_id
-        $missingPath = Join-Path $env:TEMP "it-shell-integration-missing-$([guid]::NewGuid())"
-        $command = "Get-Item '$($missingPath.Replace("'", "''"))' -ErrorAction SilentlyContinue; Write-Output ok"
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command $command | Out-Null
-            { Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq "$sid" -and
-                    "$($_.params.sequence)" -match '(?i)osc:133;D;0(\b|;|$)'
-                } } | Should -Not -Throw
-            Start-Sleep -Seconds 2
-            @(Get-WtEvents -Listener $listener -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq "$sid" -and
-                    $_.params.sequence -match '(?i)osc:133;D;(?!0(\b|;|$))(-?\d+)'
-                }) | Should -BeNullOrEmpty
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-    }
-
-    It 'PowerShell shell integration emits a zero-exit mark on success (OSC 133;D;0)' {
-        $sid = (Get-ActivePane -App $script:app).session_id
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Invoke-RunCommand -App $script:app -SessionId $sid -Command "echo ok$(Get-Random)" -SettleSec 8 | Out-Null
-            { Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                    $_.method -eq 'vt_sequence' -and "$($_.params.sequence)" -match '(?i)osc:133;D;0(\b|;|$)'
-                } } | Should -Not -Throw
+                $_.method -eq 'vt_sequence' -and "$($_.params.pane_id)" -eq "$sid" -and
+                "$($_.params.sequence)" -match '(?i)^osc:133;D(?:;|$)'
+            }) | Should -BeNullOrEmpty
         }
         finally { Stop-WtEventListener -Listener $listener }
     }

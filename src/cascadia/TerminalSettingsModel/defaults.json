@@ -567,7 +567,6 @@
         { "command": "openAgentPane", "id": "Terminal.OpenAgentPane" },
         { "command": "focusAgentPane", "id": "Terminal.FocusAgentPane" },
         { "command": "openAgentSessions", "id": "Terminal.OpenAgentSessions" },
-        { "command": "triggerAutofix", "id": "Terminal.TriggerAutofix" },
         { "command": "openBackgroundAgent", "id": "Terminal.OpenBackgroundAgent" },
         { "command": "bugReport", "id": "Terminal.BugReport" },
         { "command": "workspaces", "id": "Terminal.Workspaces" },
@@ -775,7 +774,6 @@
         { "keys": "ctrl+shift+/", "id": "Terminal.OpenAgentSessions" },
         { "keys": "ctrl+shift+s", "id": "Terminal.ToggleSidebar" },
         { "keys": "ctrl+shift+g", "id": "Terminal.ToggleSidebarAgentsOnly" },
-        { "keys": "ctrl+alt+period", "id": "Terminal.TriggerAutofix" },
 
         // Tab Management
         // "command": "closeTab" is unbound by default.

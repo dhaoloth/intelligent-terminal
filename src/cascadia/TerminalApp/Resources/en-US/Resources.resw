@@ -1305,6 +1305,10 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Shell integration is already configured for the shells detected on your system (PowerShell, bash, or WSL bash).</value>
     <comment>{Locked="PowerShell","bash","WSL bash"}</comment>
   </data>
+  <data name="InitShellIntegrationNoSupportedProfiles" xml:space="preserve">
+    <value>No PowerShell, bash, or WSL profiles are configured for shell integration.</value>
+    <comment>{Locked="PowerShell","bash","WSL"}</comment>
+  </data>
   <data name="InitShellIntegrationErrorTitle" xml:space="preserve">
     <value>Shell Integration Error</value>
   </data>
@@ -1926,6 +1930,17 @@ For all available options, run 'wt new-tab --help'.</value>
   </data>
   <data name="SshHostsInvalidIdentity" xml:space="preserve">
     <value>Enter an absolute private key path such as C:\Users\you\.ssh\id_ed25519, without environment variables.</value>
+  </data>
+  <data name="SshHostsJumpAlias" xml:space="preserve">
+    <value>Jump host</value>
+  </data>
+  <data name="SshHostsJumpAliasHint" xml:space="preserve">
+    <value>Optional OpenSSH config alias</value>
+    <comment>{Locked="OpenSSH"}</comment>
+  </data>
+  <data name="SshHostsInvalidJumpAlias" xml:space="preserve">
+    <value>Enter a different OpenSSH host alias with letters, digits, periods, hyphens or underscores.</value>
+    <comment>{Locked="OpenSSH"}</comment>
   </data>
   <data name="SshHostsIdentityUnavailable" xml:space="preserve">
     <value>The selected private key file is missing or inaccessible.</value>

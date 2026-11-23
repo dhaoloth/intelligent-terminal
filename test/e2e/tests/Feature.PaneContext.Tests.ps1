@@ -9,10 +9,7 @@ BeforeDiscovery {
 Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
-            autoErrorDetectionEnabled = $true
-            autoFixEnabled = $false
-        }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
 
         function Read-TestPaneContext {
             param([string]$SessionId, [int]$Lines = 1000, [int]$Characters = 100000)
@@ -42,29 +39,24 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
         if ($script:app) { Stop-Terminal -App $script:app }
     }
 
-    It 'Pane context captures the completed marked command' {
+    It 'Pane context captures the latest marked command locally' {
         $marker = "pc-error-$([guid]::NewGuid().ToString('N'))"
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id -Command "throw '$marker'" | Out-Null
-            $failure = Wait-WtCommandFailure -Listener $listener -PaneId $script:shell.session_id -TimeoutSec 20
-            $failure.params.tab_id | Should -Not -BeNullOrEmpty
-            $context = Read-TestPaneContext -SessionId $script:shell.session_id
-            $context.output_source | Should -Be 'last_command'
-            $context.has_marks | Should -BeTrue
-            $context.fallback_reason | Should -Be ''
-            $context.content | Should -Match ([regex]::Escape("throw '$marker'"))
-            ([regex]::Matches($context.content, [regex]::Escape($marker))).Count |
-                Should -BeGreaterOrEqual 2 -Because 'both the command and its error output must be captured'
-            $context.truncated | Should -BeFalse
-            $context.pane.session_id | Should -Be $script:shell.session_id
-            $context.pane.pid | Should -Be $script:shell.pid
-            $context.pane.shell | Should -Be 'pwsh'
-            $context.pane.cwd | Should -Not -BeNullOrEmpty
-            $context.pane.size.rows | Should -BeGreaterThan 0
-            $context.pane.size.columns | Should -BeGreaterThan 0
-        }
-        finally { Stop-WtEventListener -Listener $listener }
+        Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id -Command "throw '$marker'" | Out-Null
+        Assert-Pane -App $script:app -SessionId $script:shell.session_id -Match ([regex]::Escape($marker)) -TimeoutSec 20
+        $context = Read-TestPaneContext -SessionId $script:shell.session_id
+        $context.output_source | Should -Be 'last_command'
+        $context.has_marks | Should -BeTrue
+        $context.fallback_reason | Should -Be ''
+        $context.content | Should -Match ([regex]::Escape("throw '$marker'"))
+        ([regex]::Matches($context.content, [regex]::Escape($marker))).Count |
+            Should -BeGreaterOrEqual 2 -Because 'both the command and its error output must be captured'
+        $context.truncated | Should -BeFalse
+        $context.pane.session_id | Should -Be $script:shell.session_id
+        $context.pane.pid | Should -Be $script:shell.pid
+        $context.pane.shell | Should -Be 'pwsh'
+        $context.pane.cwd | Should -Not -BeNullOrEmpty
+        $context.pane.size.rows | Should -BeGreaterThan 0
+        $context.pane.size.columns | Should -BeGreaterThan 0
     }
 
     It 'Pane context falls back to the newest unmarked output' {

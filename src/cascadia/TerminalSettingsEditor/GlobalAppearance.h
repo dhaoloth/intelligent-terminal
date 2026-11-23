@@ -17,6 +17,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         til::property_changed_event PropertyChanged;
         WINRT_OBSERVABLE_PROPERTY(Editor::GlobalAppearanceViewModel, ViewModel, PropertyChanged.raise, nullptr);
+
+        safe_void_coroutine _ImportTerminalAppearanceClick(const Windows::Foundation::IInspectable& sender, const Windows::UI::Xaml::RoutedEventArgs& args);
+
+    private:
+        winrt::weak_ref<Editor::IHostedInWindow> _windowRoot;
     };
 }
 

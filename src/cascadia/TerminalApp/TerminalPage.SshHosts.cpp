@@ -103,6 +103,11 @@ namespace
                     args.append(L" --ssh-user");
                     _appendArgument(args, host->username);
                 }
+                if (!host->jumpHostAlias.empty())
+                {
+                    args.append(L" --ssh-jump-alias");
+                    _appendArgument(args, host->jumpHostAlias);
+                }
                 if (!host->identityFile.empty())
                 {
                     args.append(L" --ssh-identity-file");
@@ -274,6 +279,8 @@ namespace
             return RS_(L"SshHostsInvalidUsername");
         case InvalidHostField::IdentityFile:
             return RS_(L"SshHostsInvalidIdentity");
+        case InvalidHostField::JumpHostAlias:
+            return RS_(L"SshHostsInvalidJumpAlias");
         default:
             return {};
         }
@@ -303,6 +310,9 @@ namespace
             _username.Header(box_value(RS_(L"SshHostsUsername")));
             _identity.Header(box_value(RS_(L"SshHostsIdentity")));
             _identity.PlaceholderText(RS_(L"SshHostsIdentityHint"));
+            _jumpAlias.Header(box_value(RS_(L"SshHostsJumpAlias")));
+            _jumpAlias.PlaceholderText(RS_(L"SshHostsJumpAliasHint"));
+            _jumpAlias.MaxLength(120);
 
             const auto usesConfig = _selected && _selected->usesOpenSshConfig;
             _address.IsEnabled(!usesConfig);
@@ -327,6 +337,10 @@ namespace
                 Automation::AutomationProperties::SetLiveSetting(configInfo, Automation::Peers::AutomationLiveSetting::Polite);
                 editor.Children().Append(configInfo);
             }
+            else
+            {
+                editor.Children().Append(_jumpAlias);
+            }
             editor.Children().Append(_save);
             _status.TextWrapping(TextWrapping::Wrap);
             Automation::AutomationProperties::SetLiveSetting(_status, Automation::Peers::AutomationLiveSetting::Polite);
@@ -337,7 +351,7 @@ namespace
             Dialog.Content(scroll);
 
             const auto weak = weak_from_this();
-            for (const auto& field : { _name, _group, _address, _port, _username, _identity })
+            for (const auto& field : { _name, _group, _address, _port, _username, _identity, _jumpAlias })
             {
                 field.TextChanged([weak](auto&&, auto&&) {
                     if (const auto self = weak.lock())
@@ -359,6 +373,7 @@ namespace
             _port.Text(std::to_wstring(display.port));
             _username.Text(display.username);
             _identity.Text(display.identityFile);
+            _jumpAlias.Text(display.jumpHostAlias);
             _updateButtons();
         }
 
@@ -371,6 +386,7 @@ namespace
         TextBox _port;
         TextBox _username;
         TextBox _identity;
+        TextBox _jumpAlias;
         Button _save;
         TextBlock _status;
 
@@ -385,6 +401,7 @@ namespace
                 std::wstring{ _username.Text() },
                 std::wstring{ _identity.Text() },
                 _selected && _selected->usesOpenSshConfig,
+                std::wstring{ _jumpAlias.Text() },
             };
         }
 

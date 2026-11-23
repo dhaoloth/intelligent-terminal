@@ -27,6 +27,17 @@
     </Page.Resources>
 
     <StackPanel Style="{StaticResource SettingsStackStyle}">
+        <local:SettingContainer x:Uid="Globals_ImportTerminalAppearance">
+            <StackPanel Spacing="6">
+                <Button x:Name="ImportTerminalAppearanceButton"
+                        x:Uid="Globals_ImportTerminalAppearanceButton"
+                        Click="_ImportTerminalAppearanceClick" />
+                <TextBlock x:Name="ImportTerminalAppearanceStatus"
+                           AutomationProperties.LiveSetting="Polite"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </local:SettingContainer>
+
         <!--  Theme  -->
         <local:SettingContainer x:Name="Theme"
                                 x:Uid="Globals_Theme">

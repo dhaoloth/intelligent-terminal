@@ -1,12 +1,9 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Real failed commands and the diagnostics button cross WT -> helper -> master
-# -> ACP. The fixture records requests without consuming provider quota.
+# The mock ACP agent records requests without consuming provider quota.
 
-Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
+Describe 'Feature: retired terminal diagnostics' -Tag 'Feature' {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        Add-Type -AssemblyName UIAutomationClient
-        Add-Type -AssemblyName UIAutomationTypes
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $script:requestLog = Join-Path $env:TEMP ("ite2e-autofix-routing-{0}.log" -f [guid]::NewGuid().ToString('N'))
         New-Item -ItemType File -Path $script:requestLog | Out-Null
@@ -26,7 +23,7 @@ Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
             acpCustomCommand = $command
             acpModel = ''
             autoErrorDetectionEnabled = $true
-            autoFixEnabled = $false
+            autoFixEnabled = $true
         }
         $script:targets = @()
         foreach ($label in @('A', 'B')) {
@@ -53,85 +50,22 @@ Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
         }
     }
 
-    It 'Detected Autofix clicks remain isolated between tabs' {
-        Initialize-LogOffsets -App $script:app | Out-Null
+    It 'Legacy settings cannot route shell failures to either agent tab' {
         foreach ($target in $script:targets) {
             Set-WtPaneFocus -App $script:app -SessionId $target.Shell.session_id
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Invoke-RunCommand -App $script:app -SessionId $target.Shell.session_id -Command "throw 'routing-$([guid]::NewGuid())'" | Out-Null
-                Wait-WtCommandFailure -Listener $listener -PaneId $target.Shell.session_id -TimeoutSec 20 | Out-Null
-                Wait-Until -TimeoutSec 20 -Because 'failure reaches this helper in Detected state' -Condition {
-                    (Get-ItLogText -App $script:app -Name "wta-main_helper-$($target.Agent.HelperProcessId).log" -SinceStart) -match
-                        ('surfacing Detected pill.*pane_id=' + [regex]::Escape($target.Shell.session_id))
-                } | Out-Null
-            }
-            finally { Stop-WtEventListener -Listener $listener }
+            $token = [guid]::NewGuid().ToString('N')
+            $marker = "shell-failure-$token"
+            # Emit the same command-finished mark as integrated shells.
+            $command = "[Console]::Write(('{0}]133;D;1{1}' -f [char]27, [char]7)); throw ('shell-failure-' + '$token')"
+            Invoke-RunCommand -App $script:app -SessionId $target.Shell.session_id -Command $command | Out-Null
+            Wait-Until -TimeoutSec 20 -Because 'PowerShell displayed the error' -Condition {
+                (Get-WtCapture -App $script:app -SessionId $target.Shell.session_id -MaxLines 30) -match
+                    [regex]::Escape($marker)
+            } | Out-Null
+            Test-UiElementExists -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 1 | Should -BeFalse
         }
-        $a, $b = $script:targets
-        (Get-RoutingPromptCount $a) | Should -Be 0
-        (Get-RoutingPromptCount $b) | Should -Be 0
-        (Test-WtWindowKeyFocusable -App $script:app) | Should -BeTrue
-        Set-WtPaneFocus -App $script:app -SessionId $b.Shell.session_id
-        $root = [Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$script:app.Hwnd))
-        function Find-FocusTarget([string]$id) {
-            $root.FindFirst([Windows.Automation.TreeScope]::Descendants,
-                [Windows.Automation.PropertyCondition]::new(
-                    [Windows.Automation.AutomationElement]::AutomationIdProperty, $id))
+        foreach ($target in $script:targets) {
+            (Get-RoutingPromptCount $target) | Should -Be 0
         }
-        $diagnostics = Find-FocusTarget 'DiagnosticsButton'
-        $diagnostics | Should -Not -BeNullOrEmpty
-        $diagnostics.Current.IsOffscreen | Should -BeFalse
-        $diagnostics.Current.IsEnabled | Should -BeTrue
-        foreach ($i in 1..3) {
-            Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
-        }
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
-            Should -BeTrue -Because 'F6 navigates to the agent region, not each action within it'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) |
-            Should -BeTrue -Because 'Tab includes an actionable Detected diagnostics button'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [Windows.Automation.AutomationElement]::FocusedElement.Current.Name |
-            Should -Be 'Collapse sidebar'
-        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) | Should -BeTrue
-        Send-WtWindowKey -App $script:app -Vk 0x75 -Shift -RequireForeground | Out-Null
-        [Windows.Automation.AutomationElement]::FocusedElement.Current.AutomationId |
-            Should -Be 'SidebarShellPaneFocusStop' -Because 'Shift+F6 leaves diagnostics for the shell region'
-        Send-WtWindowKey -App $script:app -Vk 0x75 -RequireForeground | Out-Null
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
-            Should -BeTrue
-        Send-WtWindowKey -App $script:app -Vk 0x09 -RequireForeground | Out-Null
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, $diagnostics) | Should -BeTrue
-        Send-WtWindowKey -App $script:app -Vk 0x09 -Shift -RequireForeground | Out-Null
-        [Windows.Automation.Automation]::Compare(
-            [Windows.Automation.AutomationElement]::FocusedElement, (Find-FocusTarget 'AgentToggleButton')) |
-            Should -BeTrue
-        Set-WtPaneFocus -App $script:app -SessionId $b.Shell.session_id
-
-        # Both tabs are Detected. Clicking only B must leave A available for a
-        # separate opt-in, even though the protocol broadcasts to both helpers.
-        Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
-        Wait-Until -TimeoutSec 30 -Because 'B submits its Autofix prompt to ACP' -Condition {
-            (Get-RoutingPromptCount $b) -gt 0
-        } | Out-Null
-        Start-Sleep -Seconds 3
-        (Get-RoutingPromptCount $b) | Should -Be 1
-        (Get-RoutingPromptCount $a) | Should -Be 0 -Because 'another tab must not opt in to Autofix'
-
-        Set-WtPaneFocus -App $script:app -SessionId $a.Shell.session_id
-        Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
-        Wait-Until -TimeoutSec 30 -Because 'A retained its Detected state until explicitly clicked' -Condition {
-            (Get-RoutingPromptCount $a) -gt 0
-        } | Out-Null
-        Start-Sleep -Seconds 3
-        (Get-RoutingPromptCount $a) | Should -Be 1
-        (Get-RoutingPromptCount $b) | Should -Be 1
     }
 }

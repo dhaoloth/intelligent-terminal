@@ -1914,67 +1914,9 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
-                                             const ActionEventArgs& args)
+    void TerminalPage::_HandleTriggerAutofix(const IInspectable&, const ActionEventArgs&)
     {
-        // Per-tab: read autofix state from the active tab's AgentPaneContent.
-        const auto activeTab = _GetFocusedTabImpl();
-        if (!activeTab)
-        {
-            return;
-        }
-        const auto agentContent = activeTab->FindAgentPaneContent();
-        if (!agentContent)
-        {
-            return;
-        }
-        const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
-        if (!impl)
-        {
-            return;
-        }
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        const auto state = impl->GetAutofixState();
-        // Open or focus the active tab's agent pane (shared by Detected and
-        // Review). Opening the pane dismisses Review, not Detected.
-        const auto openAgentPaneForReview = [&]() {
-            const auto agentPane = activeTab->FindAgentPane();
-            if (agentPane && !agentPane->IsHidden())
-            {
-                if (agentContent.IsSessionsView())
-                {
-                    _RequestAgentStateForTab(activeTab, "chat", std::nullopt);
-                }
-            }
-            else
-            {
-                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
-            }
-        };
-        if (state == AS::Detected)
-        {
-            // "Ask the agent for a fix": open the pane, then fire the LLM.
-            openAgentPaneForReview();
-            Json::Value evt;
-            evt["type"] = "event";
-            evt["method"] = "autofix_execute_from_detected";
-            Json::Value params;
-            params["pane_id"] = winrt::to_string(impl->GetLastErrorPaneId());
-            params["tab_id"] = winrt::to_string(activeTab->StableId());
-            evt["params"] = params;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            ProtocolVtSequenceReceived.raise(
-                *this,
-                winrt::to_hstring(Json::writeString(wb, evt)));
-            args.Handled(true);
-        }
-        else if (state == AS::Review)
-        {
-            // Result is ready in the pane chat — just open it for review.
-            openAgentPaneForReview();
-            args.Handled(true);
-        }
+        // Keep saved key bindings readable after retiring this action.
     }
 
     // Bundle WTA / Intelligent Terminal diagnostic logs into a timestamped zip on the
@@ -2123,17 +2065,6 @@ namespace winrt::TerminalApp::implementation
 
     safe_void_coroutine TerminalPage::_InitShellIntegration([[maybe_unused]] const ShellIntegrationTarget target)
     {
-        // Publish "user clicked Install -> desired = true" SYNCHRONOUSLY,
-        // before the first suspension. If we deferred this until after the
-        // resume_background() below, a settings reload that publishes
-        // `false` between the click and our resumption could complete its
-        // uninstall first, and then this coroutine would stamp `true`
-        // back over it and reinstall — leaving $PROFILE installed while
-        // the toggle is off. Publishing pre-suspension makes the
-        // last-writer-wins semantics depend on UI-thread ordering (which
-        // matches user intent ordering), not on coroutine resume ordering.
-        _shellIntegrationDesiredEnabled.store(true, std::memory_order_release);
-
         const auto weak = get_weak();
         const auto dispatcher = Dispatcher();
 
@@ -2145,16 +2076,14 @@ namespace winrt::TerminalApp::implementation
 
         // Acquire a strong reference *before* touching any more member
         // state so a page destroyed while this coroutine was queued
-        // doesn't leave us chasing freed members. Mirrors the pattern in
-        // _ReconcileShellIntegration.
+        // does not leave us accessing destroyed members.
         auto self = weak.get();
         if (!self)
         {
             co_return;
         }
 
-        bool desiredAtRun = true;
-        bool allAlreadyInstalled = false;
+        bool hasSupportedProfiles = false;
         bool anyFailure = false;
         bool epBlocked = false;
         // Collected failure details from EVERY failing flavor (pwsh, WinPS,
@@ -2164,100 +2093,68 @@ namespace winrt::TerminalApp::implementation
         // every flavor succeeded.
         std::wstring failureDetails;
         {
-            std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
-            // Re-check after acquiring the lock. If a settings reload (toggle
-            // off) raced ahead and published `false`, that is a newer
-            // expression of intent than the Install button click; skip the
-            // install so we don't reinstall on top of the just-completed
-            // uninstall and leave the profile out of sync with the toggle.
-            desiredAtRun = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
-            if (desiredAtRun)
-            {
-                // Profile-gated install: RunInstall only touches shells
-                // the user actually has a profile for. A user with only
-                // "Developer PowerShell for VS" (Windows PowerShell) and
-                // no pwsh profile should not get a pwsh block written.
-                // Skipped shells are reported as success-already-installed
-                // so the all-installed / any-failure UI verdict below
-                // doesn't flag a missing shell as a failure.
-                const auto results = installShellIntegration(ShellIntegrationSweep::PowerShellPolicyCheck::Probe);
+            std::lock_guard<std::mutex> guard{ _shellIntegrationInstallMutex };
+            // Profile-gated install: RunInstall only touches shells
+            // the user actually has a profile for. A user with only
+            // "Developer PowerShell for VS" (Windows PowerShell) and
+            // no pwsh profile should not get a pwsh block written.
+            // Skipped shells are reported as success-already-installed
+            // so the all-installed / any-failure UI verdict below
+            // doesn't flag a missing shell as a failure.
+            const auto results = installShellIntegration(ShellIntegrationSweep::PowerShellPolicyCheck::Probe);
 
-                // Aggregate verdict across ALL four flavors (pwsh, WinPS,
-                // bash, every WSL distro). The earlier two-flavor version
-                // silently dropped bash/WSL failures on the floor.
-                auto fold = [&](const auto& r, std::wstring_view label) {
-                    if (r.executionPolicyBlocked)
+            // Aggregate verdict across ALL four flavors (pwsh, WinPS,
+            // bash, every WSL distro). The earlier two-flavor version
+            // silently dropped bash/WSL failures on the floor.
+            const auto consider = [&](const auto& r, std::wstring_view label) {
+                hasSupportedProfiles = true;
+                if (r.executionPolicyBlocked)
+                {
+                    epBlocked = true;
+                }
+                if (!r.success)
+                {
+                    anyFailure = true;
+                    if (!r.errorMessage.empty())
                     {
-                        epBlocked = true;
-                    }
-                    if (!r.success)
-                    {
-                        anyFailure = true;
-                        if (!r.errorMessage.empty())
+                        if (!failureDetails.empty())
                         {
-                            if (!failureDetails.empty())
-                            {
-                                failureDetails += L"\n";
-                            }
-                            failureDetails += L"• ";
-                            failureDetails += label;
-                            failureDetails += L": ";
-                            failureDetails += r.errorMessage;
+                            failureDetails += L"\n";
                         }
+                        failureDetails += L"• ";
+                        failureDetails += label;
+                        failureDetails += L": ";
+                        failureDetails += r.errorMessage;
                     }
-                };
+                }
+            };
 
-                bool sawAny = false;
-                auto consider = [&](const auto& r, std::wstring_view label) {
-                    sawAny = true;
-                    fold(r, label);
-                    if (!r.alreadyInstalled)
-                    {
-                        allAlreadyInstalled = false;
-                    }
-                };
-
-                allAlreadyInstalled = true; // becomes false on first non-alreadyInstalled below
-
-                if (results.shellPresence.pwsh)
-                {
-                    consider(results.pwsh, L"PowerShell");
-                }
-                if (results.shellPresence.windowsPowerShell)
-                {
-                    consider(results.windowsPowerShell, L"Windows PowerShell");
-                }
-                if (results.shellPresence.bash)
-                {
-                    consider(results.bash, L"bash");
-                }
-                for (const auto& [distName, wslRes] : results.wsl)
-                {
-                    consider(wslRes, L"WSL bash (" + distName + L")");
-                }
-
-                if (!sawAny)
-                {
-                    // No profiles matched any supported shell. Treat as
-                    // "already installed" (nothing to do) so no dialog
-                    // fires — matches the prior single-flavor behavior
-                    // when both pwsh AND WinPS were absent.
-                    allAlreadyInstalled = true;
-                }
+            if (results.shellPresence.pwsh)
+            {
+                consider(results.pwsh, L"PowerShell");
+            }
+            if (results.shellPresence.windowsPowerShell)
+            {
+                consider(results.windowsPowerShell, L"Windows PowerShell");
+            }
+            if (results.shellPresence.bash)
+            {
+                consider(results.bash, L"bash");
+            }
+            for (const auto& [distName, wslRes] : results.wsl)
+            {
+                consider(wslRes, L"WSL bash (" + distName + L")");
             }
         }
 
         co_await wil::resume_foreground(dispatcher);
         if (auto strong = weak.get())
         {
-            if (!desiredAtRun)
+            if (!hasSupportedProfiles)
             {
-                // Auto-detection was disabled between the click and the lock.
-                // No dialog: a reconcile has already brought $PROFILE in line.
-            }
-            else if (allAlreadyInstalled)
-            {
-                // Already configured — no dialog needed
+                strong->_ShowShellIntegrationDialog(
+                    RS_(L"InitShellIntegrationErrorTitle"),
+                    RS_(L"InitShellIntegrationNoSupportedProfiles"));
             }
             else if (epBlocked)
             {
@@ -2324,71 +2221,6 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_OnSettingsInitShellIntegration(const IInspectable& /*sender*/, const ShellIntegrationTarget target)
     {
         _InitShellIntegration(target);
-    }
-
-    // Silent install/uninstall driven by EffectiveAutoErrorDetectionEnabled.
-    // Called from SetSettings on first-load and on every change of the
-    // effective detection setting. No dialog — this is the background
-    // reconcile that keeps $PROFILE in sync with the user's stored
-    // preference (including roaming/sync arrivals on fresh machines and
-    // toggle-OFF cleanup that the FRE/Settings-Save dialog path doesn't
-    // perform). Install/Uninstall are both idempotent.
-    safe_void_coroutine TerminalPage::_ReconcileShellIntegration()
-    {
-        auto weak = get_weak();
-
-        // Snapshot WSL profile commandlines AND non-WSL shell presence on the UI
-        // thread BEFORE going background. _settings.AllProfiles() is
-        // an observable vector and must not be iterated concurrently
-        // with a settings reload.
-        const auto wslCommandlines = ShellIntegrationSweep::SnapshotWslCommandlines(_settings);
-        const auto shellPresence = ShellIntegrationSweep::SnapshotShellPresence(_settings);
-
-        co_await winrt::resume_background();
-        auto self = weak.get();
-        if (!self)
-        {
-            co_return;
-        }
-
-        // Serialize against any other in-flight reconcile so back-to-back
-        // toggle changes (or file-watcher reload storms) can't interleave
-        // an earlier Install's write after a later Uninstall and leave
-        // the $PROFILE block stuck in the wrong state. Reading the
-        // desired flag inside the lock means the last acquirer always
-        // observes the latest UI-thread-published value, so the final
-        // on-disk state matches the latest setting.
-        std::lock_guard<std::mutex> guard{ _shellIntegrationReconcileMutex };
-        const bool enabled = _shellIntegrationDesiredEnabled.load(std::memory_order_acquire);
-
-        if (enabled)
-        {
-            // Profile-gated install: only touch shells the user has a
-            // profile for. A user keeping only "Developer PowerShell
-            // for VS" (which uses Windows PowerShell) and no pwsh
-            // profile must not get pwsh integration written.
-            // GH#613: startup/settings reloads leave WSL to the lazy new-tab path.
-            (void)ShellIntegrationSweep::RunInstall(shellPresence, {}, ShellIntegrationSweep::InstallTargets::WindowsShells);
-        }
-        else
-        {
-            // Profile-gated uninstall: symmetric with install — we
-            // only clean up shells the user currently has a profile
-            // for. Trade-off: if the user installed for shell X,
-            // deleted the X profile, then toggled off, the X block
-            // in their HOME survives. This matches install-time
-            // policy and avoids touching shells the user does not
-            // use (which would write `.bak.*` for nothing). The
-            // next reconcile after re-adding the X profile sweeps
-            // it.
-            //
-            // WSL is similarly bounded by `wslCommandlines`: WT profile
-            // deletion != WSL distro removal (the user may still
-            // use the distro via `wsl.exe` directly), and tracking
-            // previously-installed distros across settings reloads
-            // would add complexity for a rare edge case.
-            ShellIntegrationSweep::RunUninstall(shellPresence, wslCommandlines);
-        }
     }
 
     void TerminalPage::_ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message)

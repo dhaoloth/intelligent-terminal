@@ -36,12 +36,12 @@ fn shell_event(app: &mut App, sequence: &str) {
 #[test]
 fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_drafts() {
     let _locale = crate::test_support::lock_locale();
-    for prefix in ["before ", "/fix inspect "] {
+    for manual_fix in [false, true] {
         let (mut app, mut rx) = connected_app();
         app.current_tab_mut().config_pending_id = Some("hold".into());
         let tab = app.current_tab_mut();
-        tab.input = format!("{prefix}after");
-        tab.cursor_pos = prefix.len();
+        tab.input = "before after".into();
+        tab.cursor_pos = "before ".len();
         let image = crate::clipboard_image::PastedImage {
             data_base64: "aW1hZ2U=".into(),
             mime_type: "image/png".into(),
@@ -51,8 +51,8 @@ fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_draf
         tab.attachments
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image);
         let draft = tab.input.clone();
-        app.enqueue_input(prefix.starts_with("/fix").then(|| "inspect after".into()));
-        if prefix.starts_with("/fix") {
+        app.enqueue_input(manual_fix.then(|| "inspect after".into()));
+        if manual_fix {
             complete_autofix_capture(&mut app, "queue-tab");
         }
         let old = &app.current_tab().prompt_queue.entries[0];
@@ -78,8 +78,8 @@ fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_draf
             payload
         );
         assert!(app.current_tab().prompt_queue.entries.is_empty());
-        app.enqueue_input(prefix.starts_with("/fix").then(|| "inspect after".into()));
-        let fresh = if prefix.starts_with("/fix") {
+        app.enqueue_input(manual_fix.then(|| "inspect after".into()));
+        let fresh = if manual_fix {
             &app.current_tab().pending_autofix_captures[0]
         } else {
             &app.current_tab().prompt_queue.entries[0]
@@ -95,7 +95,7 @@ fn recall_restores_image_placement_without_copying_payload_and_refuses_busy_draf
 fn recall_skips_automatic_work_and_unblocked_preparation() {
     let _locale = crate::test_support::lock_locale();
     let (mut app, mut rx) = connected_app();
-    enter(&mut app, "/fix preparing");
+    app.submit_manual_fix_for_test("preparing".into());
     assert!(!app.pending_queue_can_recall());
     app.recall_last_pending_input();
     assert!(app.current_tab().input.is_empty());
@@ -250,7 +250,7 @@ fn late_prompt_error_after_stop_and_rename_does_not_invalidate_fresh_capture() {
     enter(&mut app, "active");
     let active = rx.try_recv().unwrap();
     app.request_turn_cancel_for_tab("queue-tab");
-    enter(&mut app, "/fix fresh investigation");
+    app.submit_manual_fix_for_test("fresh investigation".into());
     let id = app.current_tab().pending_autofix_captures[0].submission.id;
     let token = app.current_tab().pending_autofix_captures[0]
         .submission
@@ -321,7 +321,7 @@ fn stopping_only_automatic_work_does_not_pause_future_explicit_input() {
 fn closing_tab_cancels_preparation_and_ignores_late_capture_completion() {
     let _locale = crate::test_support::lock_locale();
     let (mut app, mut rx) = connected_app();
-    enter(&mut app, "/fix investigate");
+    app.submit_manual_fix_for_test("investigate".into());
     let preparation = &app.current_tab().pending_autofix_captures[0];
     let id = preparation.submission.id;
     let token = preparation.submission.cancellation_token();
@@ -342,7 +342,7 @@ fn closing_tab_cancels_preparation_and_ignores_late_capture_completion() {
 fn renaming_tab_preserves_preparation_over_lazily_created_target_history() {
     let _locale = crate::test_support::lock_locale();
     let (mut app, mut rx) = connected_app();
-    enter(&mut app, "/fix investigate");
+    app.submit_manual_fix_for_test("investigate".into());
     let id = app.current_tab().pending_autofix_captures[0].submission.id;
     assert!(app.current_tab().messages.is_empty());
     app.tab_mut("renamed")
@@ -537,12 +537,12 @@ fn command_start_still_invalidates_waiting_automatic_evidence() {
 }
 
 #[test]
-fn typed_fix_binds_its_discovered_source_and_rejects_activity_during_resolution() {
+fn manual_fix_binds_its_discovered_source_and_rejects_activity_during_resolution() {
     let _locale = crate::test_support::lock_locale();
     for source_changes in [false, true] {
         let (mut app, mut rx) = connected_app();
         app.current_tab_mut().config_pending_id = Some("hold".into());
-        enter(&mut app, "/fix explain");
+        app.submit_manual_fix_for_test("explain".into());
         let item = &app.current_tab().pending_autofix_captures[0];
         let request_id = item.submission.id;
         let token = item.submission.cancellation_token();

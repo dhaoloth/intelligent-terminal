@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt.
+# Release checklist §1 Settings>AI Agents + §0 FRE agent, position, and session settings.
 # Settings are top-level keys in settings.json (hot-reloaded); FRE completion + choices
 # persist in state.json/settings.json. Deterministic — no LLM.
 #   Invoke-Pester test/e2e/tests -Tag Feature
@@ -45,19 +45,13 @@ Describe 'Feature §1 Settings > AI Agents' -Tag 'Feature' -Skip:(-not $script:R
         Set-WtPanePosition -App $script:app -Position 'right' | Out-Null
         Assert-Setting -App $script:app -Key 'agentPanePosition' -Value 'right'
     }
-    It 'Automatic error detection setting works (autoFixEnabled toggles)' {
-        Set-WtAutofix -App $script:app -Enabled $true | Out-Null
-        Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $true
-        Set-WtAutofix -App $script:app -Enabled $false | Out-Null
-        Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $false
-    }
     It 'Automatic error suggestion setting works (coordinator.enabled toggles)' {
         Set-WtSetting -App $script:app -Key 'aiIntegration.coordinator.enabled' -Value $true | Out-Null
         Assert-Setting -App $script:app -Key 'aiIntegration.coordinator.enabled' -Value $true
     }
 }
 
-Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature §0 FRE settings, positions, session management' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true
@@ -94,12 +88,6 @@ Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'F
     }
 
     Context 'FRE automatic error settings' {
-        It 'Automatic error detection off/on' {
-            Set-WtAutofix -App $script:app -Enabled $false | Out-Null
-            Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $false
-            Set-WtAutofix -App $script:app -Enabled $true | Out-Null
-            Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $true
-        }
         It 'Automatic error suggestion off/on (coordinator.enabled)' {
             Set-WtSetting -App $script:app -Key 'aiIntegration.coordinator.enabled' -Value $false | Out-Null
             Assert-Setting -App $script:app -Key 'aiIntegration.coordinator.enabled' -Value $false
@@ -107,8 +95,7 @@ Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'F
             Assert-Setting -App $script:app -Key 'aiIntegration.coordinator.enabled' -Value $true
         }
         It 'Settings persist together' {
-            Set-WtSettings -App $script:app -Settings @{ autoFixEnabled = $true; agentPanePosition = 'right' } | Out-Null
-            Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $true
+            Set-WtSettings -App $script:app -Settings @{ agentPanePosition = 'right' } | Out-Null
             Assert-Setting -App $script:app -Key 'agentPanePosition' -Value 'right'
         }
     }

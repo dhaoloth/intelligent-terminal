@@ -8364,7 +8364,7 @@ namespace TerminalAppLocalTests
                 {
                     VERIFY_IS_NULL(fre.FindName(name), name);
                 }
-                for (const auto name : { L"AgentComboBox", L"PanePositionComboBox", L"ErrorDetectionComboBox", L"SessionManagementToggle", L"SaveButton" })
+                for (const auto name : { L"AgentComboBox", L"PanePositionComboBox", L"SessionManagementToggle", L"SaveButton" })
                 {
                     const auto control = fre.FindName(name).as<FrameworkElement>();
                     VERIFY_IS_NOT_NULL(control);
@@ -8372,6 +8372,7 @@ namespace TerminalAppLocalTests
                     VERIFY_IS_NOT_NULL(peer);
                     VERIFY_IS_FALSE(peer.GetName().empty());
                 }
+                VERIFY_IS_NULL(fre.FindName(L"ErrorDetectionComboBox"));
 
                 VERIFY_ARE_EQUAL(configured.has_value(), globals.HasTabLayout());
                 VERIFY_ARE_EQUAL(configured.value_or(TabLayout::Vertical), globals.TabLayout());
@@ -8431,8 +8432,7 @@ namespace TerminalAppLocalTests
             const auto expectedTheme = theme == ElementTheme::Default ? ElementTheme::Dark : theme;
             const auto signalReady = [&]() {
                 if (fre.ActualTheme() == expectedTheme &&
-                    fre.FindName(L"SidebarImage").as<Image>().RequestedTheme() == expectedTheme &&
-                    fre.FindName(L"AutofixImage").as<Image>().RequestedTheme() == expectedTheme)
+                    fre.FindName(L"SidebarImage").as<Image>().RequestedTheme() == expectedTheme)
                 {
                     changed.Set();
                 }
@@ -8452,12 +8452,12 @@ namespace TerminalAppLocalTests
                 const auto actualTheme = fre.ActualTheme();
                 VERIFY_ARE_EQUAL(expectedTheme, actualTheme);
                 VERIFY_ARE_EQUAL(ElementTheme::Dark, fre.FindName(L"RootGrid").as<Grid>().RequestedTheme());
-                for (const auto name : { L"SidebarImage", L"AutofixImage" })
+                for (const auto name : { L"SidebarImage" })
                 {
                     const auto image = fre.FindName(name).as<Image>();
                     VERIFY_ARE_EQUAL(actualTheme, image.RequestedTheme());
                     const auto source = image.Source().as<Media::Imaging::BitmapImage>().UriSource().AbsoluteUri();
-                    const winrt::hstring expectedSource{ std::wstring_view{ name } == L"SidebarImage" ? L"ms-appx:///FREAssets/Headless-mode.png" : L"ms-appx:///FREAssets/Error-detection.png" };
+                    const winrt::hstring expectedSource{ L"ms-appx:///FREAssets/Headless-mode.png" };
                     VERIFY_ARE_EQUAL(expectedSource, source);
                 }
             });
@@ -8480,9 +8480,8 @@ namespace TerminalAppLocalTests
             const auto title = fre.FindName(L"WelcomeTitle").try_as<TextBlock>();
             const auto subtitle = fre.FindName(L"WelcomeSubtitle").try_as<TextBlock>();
             const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
-            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").try_as<Border>();
             const auto sidebarImage = fre.FindName(L"SidebarImage").try_as<Image>();
-            const auto autofixImage = fre.FindName(L"AutofixImage").try_as<Image>();
             const auto sidebarTitle = fre.FindName(L"SidebarCardTitle").try_as<TextBlock>();
             const auto sidebarDescription = fre.FindName(L"SidebarCardDescription").try_as<TextBlock>();
             const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
@@ -8494,9 +8493,8 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(title);
             VERIFY_IS_NOT_NULL(subtitle);
             VERIFY_IS_NOT_NULL(sidebarCard);
-            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(sidebarImageFrame);
             VERIFY_IS_NOT_NULL(sidebarImage);
-            VERIFY_IS_NOT_NULL(autofixImage);
             VERIFY_IS_NOT_NULL(sidebarTitle);
             VERIFY_IS_NOT_NULL(sidebarDescription);
             VERIFY_IS_NOT_NULL(footer);
@@ -8519,29 +8517,28 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(TextWrapping::Wrap, title.TextWrapping());
 
             VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 1032.0) <= 0.5);
-            VERIFY_ARE_EQUAL(3u, cards.ColumnDefinitions().Size());
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 510.0) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 510.0) <= 0.5);
-            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_ARE_EQUAL(1u, cards.ColumnDefinitions().Size());
             const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
             VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 522.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 1032.0) <= 0.5);
 
             const auto cardPadding = sidebarCard.Padding();
             VERIFY_ARE_EQUAL(20.0, cardPadding.Left);
             VERIFY_ARE_EQUAL(24.0, cardPadding.Top);
             VERIFY_ARE_EQUAL(20.0, cardPadding.Right);
             VERIFY_ARE_EQUAL(24.0, cardPadding.Bottom);
+            const auto imageFrameOrigin = sidebarImageFrame.TransformToVisual(sidebarCard).TransformPoint({});
             const auto imageOrigin = sidebarImage.TransformToVisual(sidebarCard).TransformPoint({});
             const auto cardTitleOrigin = sidebarTitle.TransformToVisual(sidebarCard).TransformPoint({});
             const auto cardDescriptionOrigin = sidebarDescription.TransformToVisual(sidebarCard).TransformPoint({});
-            VERIFY_IS_TRUE(std::abs(imageOrigin.X - 22.5f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(imageFrameOrigin.X - ((sidebarCard.ActualWidth() - 465.0f) / 2.0f)) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(imageOrigin.X - imageFrameOrigin.X) <= 0.5f);
             VERIFY_IS_TRUE(std::abs(imageOrigin.Y - 24.0f) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarImageFrame.ActualWidth() - 465.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImageFrame.ActualHeight() - 261.5625) <= 0.5);
             VERIFY_IS_TRUE(std::abs(sidebarImage.ActualWidth() - 465.0) <= 0.5);
             VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 261.5625) <= 0.5);
             VERIFY_ARE_EQUAL(Media::Stretch::Uniform, sidebarImage.Stretch());
-            VERIFY_ARE_EQUAL(Media::Stretch::Uniform, autofixImage.Stretch());
             VERIFY_IS_TRUE(std::abs(cardTitleOrigin.X - 20.0f) <= 0.5f);
             VERIFY_IS_TRUE(std::abs(cardTitleOrigin.Y - 295.5625f) <= 0.5f);
             VERIFY_IS_TRUE(std::abs(cardDescriptionOrigin.Y - 333.5625f) <= 0.5f);
@@ -8575,7 +8572,8 @@ namespace TerminalAppLocalTests
             const auto scroller = fre.FindName(L"WelcomeContentScroller").try_as<ScrollViewer>();
             const auto cards = fre.FindName(L"WelcomeCardsGrid").try_as<Grid>();
             const auto sidebarCard = fre.FindName(L"SidebarCard").try_as<Border>();
-            const auto autofixCard = fre.FindName(L"AutofixCard").try_as<Border>();
+            const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").try_as<Border>();
+            const auto sidebarImage = fre.FindName(L"SidebarImage").try_as<Image>();
             const auto footer = fre.FindName(L"WelcomeFooter").try_as<Grid>();
             const auto next = fre.FindName(L"NextButton").try_as<Button>();
 
@@ -8583,21 +8581,25 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(scroller);
             VERIFY_IS_NOT_NULL(cards);
             VERIFY_IS_NOT_NULL(sidebarCard);
-            VERIFY_IS_NOT_NULL(autofixCard);
+            VERIFY_IS_NOT_NULL(sidebarImageFrame);
+            VERIFY_IS_NOT_NULL(sidebarImage);
             VERIFY_IS_NOT_NULL(footer);
             VERIFY_IS_NOT_NULL(next);
 
             VERIFY_IS_TRUE(std::abs(contentRoot.ActualWidth() - 711.0) <= 0.5);
             VERIFY_IS_TRUE(std::abs(cards.ActualWidth() - 619.0) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(0).ActualWidth() - 303.5) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(1).ActualWidth() - 12.0) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(cards.ColumnDefinitions().GetAt(2).ActualWidth() - 303.5) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(autofixCard.ActualWidth() - 303.5) <= 0.5);
-            VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 303.5) <= 0.5);
-            const auto autofixOrigin = autofixCard.TransformToVisual(cards).TransformPoint({});
+            VERIFY_ARE_EQUAL(1u, cards.ColumnDefinitions().Size());
+            VERIFY_IS_TRUE(std::abs(sidebarCard.ActualWidth() - 619.0) <= 0.5);
             const auto sidebarOrigin = sidebarCard.TransformToVisual(cards).TransformPoint({});
             VERIFY_IS_TRUE(std::abs(sidebarOrigin.X) <= 0.5f);
-            VERIFY_IS_TRUE(std::abs(autofixOrigin.X - 315.5f) <= 0.5f);
+            const auto imageFrameOrigin = sidebarImageFrame.TransformToVisual(sidebarCard).TransformPoint({});
+            const auto imageOrigin = sidebarImage.TransformToVisual(sidebarCard).TransformPoint({});
+            VERIFY_IS_TRUE(std::abs(imageFrameOrigin.X - ((sidebarCard.ActualWidth() - 465.0f) / 2.0f)) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(imageOrigin.X - imageFrameOrigin.X) <= 0.5f);
+            VERIFY_IS_TRUE(std::abs(sidebarImageFrame.ActualWidth() - 465.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImageFrame.ActualHeight() - 261.5625) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualWidth() - 465.0) <= 0.5);
+            VERIFY_IS_TRUE(std::abs(sidebarImage.ActualHeight() - 261.5625) <= 0.5);
 
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Auto, scroller.VerticalScrollBarVisibility());
             VERIFY_ARE_EQUAL(ScrollBarVisibility::Disabled, scroller.HorizontalScrollBarVisibility());
@@ -8651,23 +8653,17 @@ namespace TerminalAppLocalTests
             fre.UpdateLayout();
 
             const auto sidebarCard = fre.FindName(L"SidebarCard").as<Border>();
-            const auto autofixCard = fre.FindName(L"AutofixCard").as<Border>();
             const auto sidebarImageFrame = fre.FindName(L"SidebarImageFrame").as<Border>();
-            const auto autofixImageFrame = fre.FindName(L"AutofixImageFrame").as<Border>();
             const auto initialRadius = sidebarCard.CornerRadius().TopLeft;
             VERIFY_IS_TRUE(std::abs(initialRadius - 6.0) < 0.01);
-            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
             VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
-            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
 
             fre.Measure({ 1130, 695 });
             fre.Arrange({ 0, 0, 1130, 695 });
             fre.UpdateLayout();
 
             VERIFY_ARE_EQUAL(initialRadius, sidebarCard.CornerRadius().TopLeft);
-            VERIFY_ARE_EQUAL(initialRadius, autofixCard.CornerRadius().TopLeft);
             VERIFY_ARE_EQUAL(initialRadius, sidebarImageFrame.CornerRadius().TopLeft);
-            VERIFY_ARE_EQUAL(initialRadius, autofixImageFrame.CornerRadius().TopLeft);
         });
     }
 
@@ -12696,11 +12692,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(page->_SplitPane(tab, SplitDirection::Right, 0.5f, agentPane));
             const auto agentContent = tab->FindAgentPaneContent();
             VERIFY_IS_NOT_NULL(agentContent);
-            const auto agentContentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
-            using AutofixState = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-            page->_settings.GlobalSettings().AutoErrorDetectionEnabled(true);
             agentContent.SetSessionsView(false);
-            agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
             page->_UpdateBottomBarState();
 
             for (const auto theme : { ElementTheme::Light, ElementTheme::Dark })
@@ -12717,7 +12709,6 @@ namespace TerminalAppLocalTests
                 VERIFY_ARE_EQUAL(expectedActiveChannel, activeFill.B);
 
                 agentContent.SetSessionsView(false);
-                agentContentImpl->ApplyAutofixState(AutofixState::Idle, {}, {}, {}, {}, {});
 
                 const auto background = page->BottomBarRoot().Background()
                                             .as<Media::SolidColorBrush>()
@@ -12728,18 +12719,10 @@ namespace TerminalAppLocalTests
                 const auto sessionsForeground = page->SessionToggleIcon().Foreground()
                                                     .as<Media::SolidColorBrush>()
                                                     .Color();
-                const auto diagnosticsIconForeground = page->DiagnosticsIcon().Foreground()
-                                                           .as<Media::SolidColorBrush>()
-                                                           .Color();
-                const auto diagnosticsForeground = page->DiagnosticsLabel().Foreground()
-                                                      .as<Media::SolidColorBrush>()
-                                                      .Color();
 
                 VERIFY_ARE_EQUAL(productionThemeResources.TabViewBackground(theme), background);
                 VERIFY_ARE_EQUAL(border, background);
                 VERIFY_IS_TRUE(contrastRatio(sessionsForeground, background) >= 3.0);
-                VERIFY_IS_TRUE(contrastRatio(diagnosticsIconForeground, background) >= 3.0);
-                VERIFY_IS_TRUE(contrastRatio(diagnosticsForeground, background) >= 4.5);
 
                 const auto verifyActiveFillContrast = [&](const Button& button) {
                     const auto overlay = button.Background().as<Media::SolidColorBrush>().Color();
@@ -12752,31 +12735,7 @@ namespace TerminalAppLocalTests
                 verifyActiveFillContrast(page->SessionToggleButton());
                 agentContent.SetSessionsView(false);
 
-                for (const auto state : { AutofixState::Pending,
-                                          AutofixState::Detected,
-                                          AutofixState::Review })
-                {
-                    agentContentImpl->ApplyAutofixState(state,
-                                                        L"test-pane",
-                                                        L"test summary",
-                                                        L"test fix",
-                                                        L"Ctrl+Alt+.",
-                                                        L"Review fix");
-                    page->_UpdateBottomBarState();
-                    VERIFY_ARE_EQUAL(Visibility::Visible, page->DiagnosticsGroup().Visibility());
-                    VERIFY_ARE_EQUAL(Visibility::Visible, page->DiagnosticsLabel().Visibility());
-                    const auto activeBackground = page->BottomBarRoot().Background()
-                                                      .as<Media::SolidColorBrush>()
-                                                      .Color();
-                    const auto activeIcon = page->DiagnosticsIcon().Foreground()
-                                                .as<Media::SolidColorBrush>()
-                                                .Color();
-                    const auto activeLabel = page->DiagnosticsLabel().Foreground()
-                                                 .as<Media::SolidColorBrush>()
-                                                 .Color();
-                    VERIFY_IS_TRUE(contrastRatio(activeIcon, activeBackground) >= 3.0);
-                    VERIFY_IS_TRUE(contrastRatio(activeLabel, activeBackground) >= 4.5);
-                }
+                VERIFY_IS_NULL(page->FindName(L"DiagnosticsGroup"));
             }
         });
     }

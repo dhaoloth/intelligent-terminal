@@ -22,10 +22,6 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace
 {
-    constexpr std::wstring_view AutoErrorHandlingDetect{ L"detect" };
-    constexpr std::wstring_view AutoErrorHandlingSuggest{ L"suggest" };
-    constexpr std::wstring_view AutoErrorHandlingOff{ L"off" };
-
     auto CaptureModelSettings(const GlobalAppSettings& settings)
     {
         return std::tuple{
@@ -41,7 +37,6 @@ namespace
         return std::tuple{
             settings.IsAgentPolicyLocked(),
             settings.IsCustomAgentPolicyLocked(),
-            settings.IsAutoFixPolicyLocked(),
             settings.IsAgentSessionHooksPolicyLocked(),
             settings.IsYoloModePolicyLocked(),
             settings.EffectiveAcpAgent(),
@@ -632,23 +627,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
         _agentPanePositionList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(posEntries));
 
-        std::vector<Editor::EnumEntry> autoErrorHandlingEntries;
-        const std::pair<winrt::hstring, std::wstring_view> autoErrorHandlingOptions[] = {
-            { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAutomatically"), AutoErrorHandlingDetect },
-            { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically"), AutoErrorHandlingSuggest },
-            { RS_(L"AIAgents_AutoErrorHandling_Off"), AutoErrorHandlingOff },
-        };
-        for (const auto& [displayName, value] : autoErrorHandlingOptions)
-        {
-            if (value == AutoErrorHandlingSuggest && _GlobalSettings.IsAutoFixPolicyLocked())
-            {
-                continue;
-            }
-            autoErrorHandlingEntries.emplace_back(winrt::make<implementation::EnumEntry>(
-                displayName,
-                winrt::box_value(winrt::hstring{ value })));
-        }
-        _autoErrorHandlingList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(autoErrorHandlingEntries));
         _agentPolicyState = CaptureAgentPolicyState(_GlobalSettings);
     }
 
@@ -698,8 +676,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         CHECK_AGENT_SETTING(DelegateAgent);
         CHECK_AGENT_SETTING(DelegateModel);
         CHECK_AGENT_SETTING(DelegateCustomCommand);
-        CHECK_AGENT_SETTING(AutoErrorDetectionEnabled);
-        CHECK_AGENT_SETTING(AutoFixEnabled);
         CHECK_AGENT_SETTING(AgentSessionManagementEnabled);
         CHECK_AGENT_SETTING(ShowTokenUsageAndCost);
         CHECK_AGENT_SETTING(RenderAgentMarkdown);
@@ -1736,44 +1712,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    // ── Auto error handling ────────────────────────────────────────────────
-
-    winrt::Windows::Foundation::IInspectable AIAgentsViewModel::CurrentAutoErrorHandling()
+    void AIAgentsViewModel::InitializeShellIntegration()
     {
-        const std::wstring_view current =
-            !_GlobalSettings.EffectiveAutoErrorDetectionEnabled() ? AutoErrorHandlingOff :
-            _GlobalSettings.EffectiveAutoFixEnabled() ? AutoErrorHandlingSuggest :
-                                                       AutoErrorHandlingDetect;
-        for (const auto& entry : _autoErrorHandlingList)
-        {
-            if (winrt::unbox_value<winrt::hstring>(entry.EnumValue()) == current)
-            {
-                return winrt::box_value(entry);
-            }
-        }
-        return winrt::box_value(_autoErrorHandlingList.GetAt(0));
-    }
-
-    void AIAgentsViewModel::CurrentAutoErrorHandling(const winrt::Windows::Foundation::IInspectable& value)
-    {
-        if (const auto entry = value.try_as<Editor::EnumEntry>())
-        {
-            const auto selected = winrt::unbox_value<winrt::hstring>(entry.EnumValue());
-            if (selected == AutoErrorHandlingSuggest && _GlobalSettings.IsAutoFixPolicyLocked())
-            {
-                return;
-            }
-
-            const bool detectionEnabled = selected != AutoErrorHandlingOff;
-            const bool autoFixEnabled = selected == AutoErrorHandlingSuggest;
-            if (_GlobalSettings.AutoErrorDetectionEnabled() != detectionEnabled ||
-                _GlobalSettings.AutoFixEnabled() != autoFixEnabled)
-            {
-                _GlobalSettings.AutoErrorDetectionEnabled(detectionEnabled);
-                _GlobalSettings.AutoFixEnabled(autoFixEnabled);
-                _NotifyChanges(L"CurrentAutoErrorHandling");
-            }
-        }
+        InitShellIntegrationRequested.raise(*this, Model::ShellIntegrationTarget::Pwsh);
     }
 
     bool AIAgentsViewModel::AgentSessionManagementEnabled() const

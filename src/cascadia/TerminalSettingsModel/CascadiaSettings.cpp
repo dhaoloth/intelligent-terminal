@@ -4,7 +4,9 @@
 #include "pch.h"
 #include "CascadiaSettings.h"
 #include "CascadiaSettings.g.cpp"
+#include "ColorScheme.h"
 #include "MatchProfilesEntry.h"
+#include "resource.h"
 
 #include "DefaultTerminal.h"
 #include "FileUtils.h"
@@ -275,6 +277,189 @@ Model::Profile CascadiaSettings::ProfileDefaults() const
     return *_baseLayerProfile;
 }
 
+bool CascadiaSettings::ImportAppearanceFromSettingsJson(winrt::hstring sourceSettingsJson)
+{
+    if (sourceSettingsJson.empty())
+    {
+        return false;
+    }
+
+    Model::CascadiaSettings sourceSettings{ nullptr };
+    try
+    {
+        // Use the embedded model defaults for standard schemes and the normal
+        // default-profile fallback. The constructor parses JSON only and does
+        // not read or write any settings files.
+        const auto sourceJson = til::u16u8(sourceSettingsJson);
+        sourceSettings = *winrt::make_self<CascadiaSettings>(
+            SettingsLoader::Default(std::string_view{ sourceJson },
+                                    LoadStringResource(IDR_DEFAULTS),
+                                    false /*validateMediaResources*/));
+    }
+    catch (...)
+    {
+        return false;
+    }
+
+    const auto sourceProfile = sourceSettings.FindProfile(sourceSettings.GlobalSettings().DefaultProfile());
+    const auto targetProfile = ProfileDefaults();
+    if (!sourceProfile || !targetProfile)
+    {
+        return false;
+    }
+
+    const auto sourceAppearance = sourceProfile.DefaultAppearance();
+    const auto sourceFont = sourceProfile.FontInfo();
+    const auto sourceGlobalSettings = sourceSettings.GlobalSettings();
+    const auto targetGlobalSettings = GlobalSettings();
+
+    struct SchemeImport
+    {
+        winrt::hstring targetName;
+        Model::ColorScheme scheme{ nullptr };
+    };
+
+    const auto equivalentScheme = [](const Model::ColorScheme& left, const Model::ColorScheme& right) {
+        if (left.Foreground() != right.Foreground() ||
+            left.Background() != right.Background() ||
+            left.SelectionBackground() != right.SelectionBackground() ||
+            left.CursorColor() != right.CursorColor())
+        {
+            return false;
+        }
+
+        const auto leftTable = left.Table();
+        const auto rightTable = right.Table();
+        if (leftTable.size() != rightTable.size())
+        {
+            return false;
+        }
+        for (uint32_t index = 0; index < leftTable.size(); ++index)
+        {
+            if (leftTable[index] != rightTable[index])
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    std::vector<SchemeImport> schemesToImport;
+    std::vector<std::pair<winrt::hstring, winrt::hstring>> schemeNames;
+    const auto isSchemeNameReserved = [&](const winrt::hstring& name) {
+        return targetGlobalSettings.ColorSchemes().HasKey(name) ||
+               std::ranges::any_of(schemesToImport, [&](const auto& scheme) { return scheme.targetName == name; });
+    };
+    const auto prepareScheme = [&](const winrt::hstring& name) {
+        if (std::ranges::any_of(schemeNames, [&](const auto& mapping) { return mapping.first == name; }))
+        {
+            return true;
+        }
+
+        const auto sourceScheme = sourceGlobalSettings.ColorSchemes().TryLookup(name);
+        if (!sourceScheme)
+        {
+            if (!targetGlobalSettings.ColorSchemes().HasKey(name))
+            {
+                return false;
+            }
+            schemeNames.emplace_back(name, name);
+            return true;
+        }
+
+        const auto existingScheme = targetGlobalSettings.ColorSchemes().TryLookup(name);
+        if (existingScheme && equivalentScheme(existingScheme, sourceScheme))
+        {
+            schemeNames.emplace_back(name, name);
+            return true;
+        }
+
+        auto targetName = name;
+        if (existingScheme || isSchemeNameReserved(name))
+        {
+            const auto baseName = winrt::hstring{ fmt::format(FMT_COMPILE(L"Windows Terminal - {}"), name) };
+            targetName = baseName;
+            for (uint32_t differentiator = 2;; ++differentiator)
+            {
+                if (const auto existingImportedScheme = targetGlobalSettings.ColorSchemes().TryLookup(targetName);
+                    existingImportedScheme)
+                {
+                    if (equivalentScheme(existingImportedScheme, sourceScheme))
+                    {
+                        schemeNames.emplace_back(name, targetName);
+                        return true;
+                    }
+                }
+                else if (!isSchemeNameReserved(targetName))
+                {
+                    break;
+                }
+                targetName = winrt::hstring{ fmt::format(FMT_COMPILE(L"{} ({})"), baseName, differentiator) };
+            }
+        }
+
+        auto schemeCopy = winrt::get_self<winrt::Microsoft::Terminal::Settings::Model::implementation::ColorScheme>(sourceScheme)->Copy();
+        schemeCopy->Name(targetName);
+        schemeCopy->Origin(OriginTag::User);
+        schemesToImport.push_back({ targetName, *schemeCopy });
+        schemeNames.emplace_back(name, targetName);
+        return true;
+    };
+
+    if (!prepareScheme(sourceAppearance.DarkColorSchemeName()) ||
+        !prepareScheme(sourceAppearance.LightColorSchemeName()))
+    {
+        return false;
+    }
+
+    for (const auto& scheme : schemesToImport)
+    {
+        targetGlobalSettings.AddColorScheme(scheme.scheme);
+    }
+
+    auto targetAppearance = targetProfile.DefaultAppearance();
+    const auto mappedSchemeName = [&](const winrt::hstring& sourceName) {
+        const auto found = std::ranges::find_if(schemeNames, [&](const auto& mapping) { return mapping.first == sourceName; });
+        return found->second;
+    };
+    targetAppearance.DarkColorSchemeName(mappedSchemeName(sourceAppearance.DarkColorSchemeName()));
+    targetAppearance.LightColorSchemeName(mappedSchemeName(sourceAppearance.LightColorSchemeName()));
+    targetAppearance.Foreground(sourceAppearance.Foreground());
+    targetAppearance.Background(sourceAppearance.Background());
+    targetAppearance.SelectionBackground(sourceAppearance.SelectionBackground());
+    targetAppearance.CursorColor(sourceAppearance.CursorColor());
+    targetAppearance.CursorShape(sourceAppearance.CursorShape());
+    targetAppearance.CursorHeight(sourceAppearance.CursorHeight());
+    targetAppearance.Opacity(sourceAppearance.Opacity());
+    targetAppearance.IntenseTextStyle(sourceAppearance.IntenseTextStyle());
+    targetAppearance.AdjustIndistinguishableColors(sourceAppearance.AdjustIndistinguishableColors());
+    targetAppearance.UseAcrylic(sourceAppearance.UseAcrylic());
+
+    auto targetFont = targetProfile.FontInfo();
+    targetFont.FontFace(sourceFont.FontFace());
+    targetFont.FontSize(sourceFont.FontSize());
+    targetFont.FontWeight(sourceFont.FontWeight());
+    const auto copyFontMap = [](const auto& sourceMap) {
+        std::map<winrt::hstring, float> values;
+        if (sourceMap)
+        {
+            for (const auto& [name, value] : sourceMap)
+            {
+                values.emplace(name, value);
+            }
+        }
+        return winrt::single_threaded_map(std::move(values));
+    };
+    targetFont.FontFeatures(copyFontMap(sourceFont.FontFeatures()));
+    targetFont.FontAxes(copyFontMap(sourceFont.FontAxes()));
+    targetFont.EnableBuiltinGlyphs(sourceFont.EnableBuiltinGlyphs());
+    targetFont.EnableColorGlyphs(sourceFont.EnableColorGlyphs());
+    targetFont.CellWidth(sourceFont.CellWidth());
+    targetFont.CellHeight(sourceFont.CellHeight());
+
+    return true;
+}
+
 // Method Description:
 // - Create a new profile based off the default profile settings.
 // Arguments:
@@ -510,10 +695,13 @@ winrt::com_ptr<Profile> CascadiaSettings::_createNewProfile(const std::wstring_v
 // - <none>
 // Return Value:
 // - <none>
-void CascadiaSettings::_validateSettings()
+void CascadiaSettings::_validateSettings(const bool validateMediaResources)
 {
     _validateAllSchemesExist();
-    _validateMediaResources();
+    if (validateMediaResources)
+    {
+        _validateMediaResources();
+    }
     _validateKeybindings();
     _validateColorSchemesInCommands();
     _validateThemeExists();

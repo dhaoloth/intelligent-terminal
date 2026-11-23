@@ -121,9 +121,10 @@ void ParsedSettings::clear()
 // This is a convenience method used by the CascadiaSettings constructor.
 // It runs some basic settings layering without relying on external programs or files.
 // This makes it suitable for most unit tests.
-SettingsLoader SettingsLoader::Default(const std::string_view& userJSON, const std::string_view& inboxJSON)
+SettingsLoader SettingsLoader::Default(const std::string_view& userJSON, const std::string_view& inboxJSON, const bool validateMediaResources)
 {
     SettingsLoader loader{ userJSON, inboxJSON };
+    loader.validateMediaResources = validateMediaResources;
     loader.MergeInboxIntoUserSettings();
     loader.FinalizeLayering();
     loader.FixupUserSettings();
@@ -1602,7 +1603,9 @@ CascadiaSettings::CascadiaSettings(SettingsLoader&& loader) :
 
     _resolveDefaultProfile();
     _resolveNewTabMenuProfiles();
-    _validateSettings();
+    // Appearance previews import portable values only. Resolving media
+    // resources can access local files or remote paths from source JSON.
+    _validateSettings(loader.validateMediaResources);
 
     ExpandCommands();
 }

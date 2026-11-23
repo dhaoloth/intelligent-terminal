@@ -129,7 +129,7 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         }
 
         function Start-QueueScenario {
-            param([switch]$HoldSession, [bool]$AutomaticFix = $true)
+            param([switch]$HoldSession)
             # Keep paths inside PowerShell literals: custom-command argv currently splits
             # whitespace rather than decoding quotes, including on paths without spaces.
             $invocation = "& '{0}' -ControlDirectory '{1}' -RecordDirectory '{2}'" -f
@@ -144,8 +144,6 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
                 acpAgent = 'custom:queue-fixture'
                 acpCustomCommand = $command
                 acpModel = ''
-                autoFixEnabled = $AutomaticFix
-                autoErrorDetectionEnabled = $true
                 agentPanePosition = 'bottom'
                 defaultProfile = $profileId
                 profiles = @{
@@ -198,43 +196,6 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
             @(Get-QueueRecords -Kind prompt) | Should -HaveCount 0
         }
 
-        function Invoke-QueueShellCommand {
-            param(
-                [Parameter(Mandatory)][string]$Marker,
-                [string]$PaneId = $script:sourcePaneId,
-                [string]$Directory,
-                [switch]$Failure
-            )
-            $exitCode = if ($Failure) { 17 } else { 0 }
-            $command = "Write-Output '$Marker'; cmd.exe /c 'exit $exitCode'"
-            if ($Directory) {
-                $command = "Set-Location -LiteralPath '$($Directory.Replace("'", "''"))'; $command"
-            }
-            $listener = Start-WtEventListener -App $script:app
-            try {
-                Invoke-RunCommand -App $script:app -SessionId $PaneId `
-                    -Command $command -SettleSec 4 | Out-Null
-                $event = Wait-WtEvent -Listener $listener -TimeoutSec 20 -Predicate {
-                    $_.method -eq 'vt_sequence' -and
-                    "$($_.params.pane_id)" -eq $PaneId -and
-                    "$($_.params.sequence)" -match "(?i)osc:133;D;$exitCode(\b|;|$)"
-                }
-                $event | Should -Not -BeNullOrEmpty
-                @(Get-WtEvents -Listener $listener) | ConvertTo-Json -Depth 64 |
-                    Set-Content -LiteralPath (Join-Path $script:runDirectory "$Marker.events.json") -Encoding utf8
-            }
-            finally { Stop-WtEventListener -Listener $listener }
-        }
-
-        function Assert-QueueShellContext {
-            param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$Directory)
-            $context = [regex]::Match($Text, '(?s)### Shell Context\s+```json\s*(.*?)\s*```')
-            $context.Success | Should -BeTrue -Because 'Autofix must carry the captured shell context'
-            $shell = $context.Groups[1].Value | ConvertFrom-Json
-            $shell.shell | Should -Be 'pwsh'
-            $shell.cwd | Should -Be (Resolve-Path -LiteralPath $Directory).Path
-        }
-
         function Start-HeldQueuePrompt {
             param([Parameter(Mandatory)][string]$Marker, [string]$Text = $Marker)
             Send-QueueInput $Text
@@ -266,30 +227,6 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         finally {
             if ($script:app) { Stop-Terminal -App $script:app }
         }
-    }
-
-    It 'Autofix waits for agent startup without losing the failure' {
-        # Hold session/new, not initialize (which has a production 15-second deadline).
-        Start-QueueScenario -HoldSession
-        Invoke-QueueShellCommand "QUEUE_SUCCESS_$script:token"
-        Assert-QueuePromptCountStable 0
-
-        $failure = "QUEUE_ERROR_$script:token"
-        Invoke-QueueShellCommand $failure -Failure
-        Assert-QueueSize 1
-        (Get-QueueText) | Should -Not -Match (Get-QueueToastRegex)
-        @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
-        Assert-QueuePromptCountStable 0
-
-        Open-QueueGate 'session.release'
-        Wait-AgentReady -App $script:app -TimeoutSec 45 | Should -BeTrue
-        Wait-QueueRecordCount -Count 1
-        $prompt = @(Get-QueueRecords -Kind prompt)[0]
-        $prompt.text | Should -Match ([regex]::Escape($failure))
-        Assert-QueueShellContext -Text $prompt.text -Directory $script:runDirectory
-        Wait-QueueRecordCount -Kind completion -Count 1
-        Send-WtKeys -App $script:app -SessionId $script:sourcePaneId -Keys @('Enter')
-        Assert-QueuePromptCountStable 1 -Seconds 2
     }
 
     It 'Queued user messages run once in submission order' {
@@ -349,169 +286,28 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         Assert-QueuePromptCountStable 3
     }
 
-    It 'Autofix detection stays actionable while the agent connects' {
-        Start-QueueScenario -HoldSession -AutomaticFix $false
-        Invoke-QueueShellCommand "QUEUE_SUCCESS_$script:token"
-        Test-UiElementExists -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 1 | Should -BeFalse
-
-        $failure = "QUEUE_ERROR_$script:token"
-        Invoke-QueueShellCommand $failure -Failure
-        Wait-UiElement -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 15 | Out-Null
-        Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton' | Should -BeTrue
-        Assert-QueueSize 0
-        Assert-QueuePromptCountStable 0
-        @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
-
-        Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
-        Assert-QueueSize 1
-        Assert-QueuePromptCountStable 0
-        @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
-
-        Open-QueueGate 'session.release'
-        Wait-AgentReady -App $script:app -TimeoutSec 45 | Should -BeTrue
-        Wait-QueueRecordCount -Count 1
-        $prompt = @(Get-QueueRecords -Kind prompt)[0]
-        $prompt.text | Should -Match ([regex]::Escape($failure))
-        Assert-QueueShellContext -Text $prompt.text -Directory $script:runDirectory
-        Wait-QueueRecordCount -Kind completion -Count 1
-        Assert-QueuePromptCountStable 1
-    }
-
-    It 'Repeated diagnostics activation submits one fix per failure' {
-        Start-QueueScenario -HoldSession -AutomaticFix $false
-        $failure = "QUEUE_ERROR_$script:token"
-        Invoke-QueueShellCommand $failure -Failure
-        Wait-UiElement -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 15 | Out-Null
-        Assert-QueueSize 0
-        $activationListener = Start-WtEventListener -App $script:app -WaitForReady
-        try {
-            Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton' | Should -BeTrue
-            Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
-            $activation = Wait-WtEvent -Listener $activationListener -TimeoutSec 20 -Predicate {
-                $_.method -eq 'autofix_execute_from_detected' -and
-                "$($_.params.pane_id)" -eq $script:sourcePaneId
-            }
-            $activation | Should -Not -BeNullOrEmpty
-            Assert-QueueSize 1
-            Wait-Until -TimeoutSec 20 -Because 'accepted diagnostics cannot be clicked again' -Condition {
-                -not (Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton')
-            } | Out-Null
-            $duplicate = $activation | ConvertTo-Json -Depth 64 -Compress
-            foreach ($attempt in 1..2) {
-                Invoke-WtCli -App $script:app -Arguments @('publish', $duplicate) | Out-Null
-                Assert-QueueSize 1
-                Test-UiElementEnabled -App $script:app -Selector 'DiagnosticsButton' | Should -BeFalse
-            }
-        }
-        finally { Stop-WtEventListener -Listener $activationListener }
-        @(Get-QueueRecords -Kind session_ready) | Should -HaveCount 0
-        Assert-QueuePromptCountStable 0
-
-        Open-QueueGate 'session.release'
-        Wait-AgentReady -App $script:app -TimeoutSec 45 | Should -BeTrue
-        Wait-QueueRecordCount -Count 1
-        Wait-QueueRecordCount -Kind completion -Count 1
-        @(Get-QueueRecords -Kind prompt)[0].text | Should -Match ([regex]::Escape($failure))
-        Assert-QueuePromptCountStable 1 -Seconds 2
-        Assert-QueueSize 0
-
-        # Deduplication is scoped to one failure, not a permanent opt-in lock.
-        $freshFailure = "QUEUE_ERROR_FRESH_$script:token"
-        Invoke-QueueShellCommand $freshFailure -Failure
-        Wait-UiElement -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 15 | Out-Null
-        Assert-QueuePromptCountStable 1
-        Assert-QueueSize 0
-        Invoke-UiElement -App $script:app -Selector 'DiagnosticsButton' | Out-Null
-        Wait-QueueRecordCount -Count 2
-        Wait-QueueRecordCount -Kind completion -Count 2
-        $freshPrompt = @(Get-QueueRecords -Kind prompt)[1]
-        $freshPrompt.text | Should -Match ([regex]::Escape($freshFailure))
-        $freshPrompt.text | Should -Not -Match ([regex]::Escape($failure))
-        Assert-QueuePromptCountStable 2 -Seconds 2
-    }
-
-    It 'Pending queue appears automatically and updates above input' {
+    It 'Pending queue shows the count above input while a request waits' {
         Start-QueueScenario
-        Assert-QueueSize 0
         $first = "QUEUE_HOLD_$script:token"
         $second = "QUEUE_HOLD_SECOND_$script:token"
-        $failure = "QUEUE_ERROR_$script:token"
         Start-HeldQueuePrompt $first
         Assert-QueueSize 0
-        Invoke-QueueShellCommand $failure -Failure
-        Assert-QueueSize 1
-        $automatic = Get-QueueTextRegex -Key 'queue.auto'
-        (Get-QueueText) | Should -Not -Match ("1\.\s+" + $automatic)
-        Assert-QueueControlsAbsent
-        (Get-QueueText) | Should -Not -Match (Get-QueueToastRegex)
 
         Send-QueueInput $second
-        Assert-QueueSize 2
+        Assert-QueueSize 1
         (Get-QueueText) | Should -Not -Match ([regex]::Escape($second))
-        (Get-QueueText) | Should -Not -Match ("2\.\s+" + $automatic)
         Assert-QueueControlsAbsent
         Assert-QueuePromptCountStable 1
+
         Open-QueueGate "$first.release"
         Wait-QueueRecordCount -Count 2
         (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$second"
-        Assert-QueueSize 1
-        (Get-QueueText) | Should -Not -Match ("1\.\s+" + $automatic)
-        Assert-QueuePromptCountStable 2
+        Assert-QueueSize 0
 
         Open-QueueGate "$second.release"
-        Wait-QueueRecordCount -Count 3
-        Wait-QueueRecordCount -Kind completion -Count 3
-        @(Get-QueueRecords -Kind prompt)[2].text | Should -Match ([regex]::Escape($failure))
-        Assert-QueueSize 0
-        Assert-QueuePromptCountStable 3
-    }
-
-    It 'Typed fix preserves captured evidence while waiting' {
-        Start-QueueScenario -AutomaticFix $false
-        $first = "QUEUE_HOLD_$script:token"
-        $failure = "QUEUE_ERROR_CAPTURED_$script:token"
-        $hint = "FROZEN_HINT_$script:token"
-        Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand $failure -Failure
-        Wait-UiElement -App $script:app -Selector 'DiagnosticsButton' -TimeoutSec 15 | Out-Null
-        Assert-QueueSize 0
-        Assert-QueuePromptCountStable 1
-
-        Send-QueueInput "/fix $hint"
-        Assert-QueueSize 1
-        # The accepted-snapshot diagnostic is the barrier, not a sleep or merely
-        # queue admission: changing shell state while capture runs is a different
-        # (correctly rejected) request and would not exercise frozen evidence.
-        Wait-Until -TimeoutSec 25 -IntervalSec 0.2 -Because 'the typed fix snapshot was accepted before changing source context' -Condition {
-            $log = Get-ItLogText -App $script:app -Name $script:helperLogName
-            @($log -split '\r?\n' | Where-Object {
-                $_ -match 'autofix snapshot ready' -and $_ -match 'request_id=\d+(?:\s|$)' -and
-                    $_ -match ('source_pane_id="?'+ [regex]::Escape($script:sourcePaneId) + '"?(?:\s|$)')
-            }).Count -eq 1
-        } | Out-Null
-        Assert-QueuePromptCountStable 1
-
-        $later = "QUEUE_SUCCESS_LATER_$script:token"
-        $laterDirectory = Join-Path $script:runDirectory 'later-command'
-        New-Item -ItemType Directory -Path $laterDirectory | Out-Null
-        Invoke-QueueShellCommand $later -Directory $laterDirectory
-        $newOutput = Get-WtCapture -App $script:app -SessionId $script:sourcePaneId -LastPrompt
-        $newOutput | Should -Match ([regex]::Escape($later))
-        $newOutput | Should -Not -Match ([regex]::Escape($failure))
-        Assert-QueueSize 1
-        Assert-QueuePromptCountStable 1
-
-        Open-QueueGate "$first.release"
-        Wait-QueueRecordCount -Count 2
         Wait-QueueRecordCount -Kind completion -Count 2
-        $prompt = @(Get-QueueRecords -Kind prompt)[1]
-        $prompt.text | Should -Match ([regex]::Escape($failure))
-        $prompt.text | Should -Match ([regex]::Escape($hint))
-        $prompt.text | Should -Not -Match ([regex]::Escape($later))
-        Assert-QueueShellContext -Text $prompt.text -Directory $script:runDirectory
-        @(@(Get-QueueRecords -Kind prompt).sessionId | Select-Object -Unique) | Should -HaveCount 1
         Assert-QueueSize 0
-        Assert-QueuePromptCountStable 2 -Seconds 2
+        Assert-QueuePromptCountStable 2
     }
 
     It 'Queue recall shortcut is disabled while attachments remain intact' {
@@ -574,11 +370,9 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         $third = "QUEUE_THIRD_$script:token"
         $fresh = "QUEUE_FRESH_$script:token"
         Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand "QUEUE_ERROR_DISCARDED_$script:token" -Failure
-        Assert-QueueSize 1
         Send-QueueInput $second
         Send-QueueInput $third
-        Assert-QueueSize 3
+        Assert-QueueSize 2
         if ($StopMethod -eq '/stop') { Send-QueueInput '/stop' }
         else { Send-QueueWindowKey -Vk 0x43 -Ctrl }
         Wait-QueueRecordCount -Kind cancel -Count 1
@@ -642,10 +436,8 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         $fresh = "QUEUE_FRESH_$script:token"
         $draft = "QUEUE_DRAFT_$script:token"
         Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand "QUEUE_ERROR_DISCARDED_$script:token" -Failure
-        Assert-QueueSize 1
         Send-QueueInput "QUEUE_SECOND_$script:token"
-        Assert-QueueSize 2
+        Assert-QueueSize 1
         Open-QueueGate "$first.fail"
         Wait-QueueRecordCount -Kind completion -Count 1
         Wait-QueueText 'QUEUE_FIXTURE_FAILURE'
@@ -669,114 +461,5 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be $first
         Assert-QueuePromptCountStable 1 -Seconds 2
         @(Get-QueueRecords -Kind cancel) | Should -HaveCount 0
-    }
-
-    It 'Queued Autofix stays pinned to its failed source pane' {
-        Start-QueueScenario
-        $other = Split-WtPane -App $script:app -SessionId $script:sourcePaneId -Direction right -Command 'cmd.exe /d'
-        $otherMarker = "QUEUE_SUCCESS_$script:token"
-        Send-WtInput -App $script:app -SessionId $other.session_id -Text "echo $otherMarker"
-        Send-WtKeys -App $script:app -SessionId $other.session_id -Keys @('Enter')
-        Wait-Until -TimeoutSec 10 -Because 'the sibling cmd pane output' -Condition {
-            (Get-WtCapture -App $script:app -SessionId $other.session_id -MaxLines 30) -match [regex]::Escape($otherMarker)
-        } | Out-Null
-        Set-WtPaneFocus -App $script:app -SessionId $script:sourcePaneId
-        $first = "QUEUE_HOLD_$script:token"
-        $next = "QUEUE_NEXT_$script:token"
-        $failure = "QUEUE_ERROR_$script:token"
-        Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand $failure -Failure
-        Assert-QueueSize 1
-        Send-QueueInput $next
-        Assert-QueueSize 2
-        Set-WtPaneFocus -App $script:app -SessionId $other.session_id
-        Assert-QueuePromptCountStable 1
-        Open-QueueGate "$first.release"
-        Wait-QueueRecordCount -Count 3
-        $prompts = @(Get-QueueRecords -Kind prompt)
-        $prompts[1].text | Should -Match ([regex]::Escape($next))
-        $prompts[2].text | Should -Match ([regex]::Escape($failure))
-        Assert-QueueShellContext -Text $prompts[2].text -Directory $script:runDirectory
-        $prompts[2].text | Should -Not -Match ([regex]::Escape($otherMarker))
-        @($prompts.sessionId | Select-Object -Unique) | Should -HaveCount 1
-        Assert-QueuePromptCountStable 3
-    }
-
-    It 'New shell commands invalidate obsolete queued Autofix' {
-        Start-QueueScenario
-        $first = "QUEUE_HOLD_$script:token"
-        Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand "QUEUE_ERROR_OLD_$script:token" -Failure
-        Assert-QueueSize 1
-        Invoke-QueueShellCommand "QUEUE_SUCCESS_$script:token"
-        Assert-QueueSize 0
-        Open-QueueGate "$first.release"
-        Wait-QueueRecordCount -Kind completion -Count 1
-        Assert-QueuePromptCountStable 1
-
-        $freshFailure = "QUEUE_ERROR_FRESH_$script:token"
-        Invoke-QueueShellCommand $freshFailure -Failure
-        Wait-QueueRecordCount -Count 2
-        $prompt = @(Get-QueueRecords -Kind prompt)[1]
-        $prompt.text | Should -Match ([regex]::Escape($freshFailure))
-        Assert-QueueShellContext -Text $prompt.text -Directory $script:runDirectory
-        Assert-QueuePromptCountStable 2
-    }
-
-    It 'Prompt redraws preserve queued Autofix until a real command starts' {
-        Start-QueueScenario
-        Invoke-RunCommand -App $script:app -SessionId $script:sourcePaneId `
-            -Command 'Set-PSReadLineKeyHandler -Chord Ctrl+l -Function InvokePrompt' -SettleSec 4 | Out-Null
-        $first = "QUEUE_HOLD_$script:token"
-        $failure = "QUEUE_ERROR_REDRAW_$script:token"
-        Start-HeldQueuePrompt $first
-        Invoke-QueueShellCommand $failure -Failure
-        Assert-QueueSize 1
-        Wait-Until -TimeoutSec 25 -Because 'the failure evidence is captured before redrawing its prompt' -Condition {
-            (Get-ItLogText -App $script:app -Name $script:helperLogName) -match 'autofix snapshot ready'
-        } | Out-Null
-
-        # InvokePrompt redraws through the editor without executing a shell command.
-        $listener = Start-WtEventListener -App $script:app
-        try {
-            foreach ($redraw in 1..2) {
-                Send-WtKeys -App $script:app -SessionId $script:sourcePaneId -Keys @('C-l')
-                Wait-Until -TimeoutSec 15 -Because "prompt redraw $redraw crosses the WT event boundary" -Condition {
-                    @(Get-WtEvents -Listener $listener | Where-Object {
-                        $_.method -eq 'vt_sequence' -and "$($_.params.pane_id)" -eq $script:sourcePaneId -and
-                            "$($_.params.sequence)" -match '^osc:133;[AB]$'
-                    }).Count -ge (2 * $redraw)
-                } | Out-Null
-            }
-            @(Get-WtEvents -Listener $listener | Where-Object {
-                $_.method -eq 'vt_sequence' -and "$($_.params.pane_id)" -eq $script:sourcePaneId -and
-                    "$($_.params.sequence)" -eq 'osc:133;C'
-            }) | Should -HaveCount 0
-            Assert-QueueSize 1
-            Assert-QueuePromptCountStable 1
-        }
-        finally { Stop-WtEventListener -Listener $listener }
-
-        Open-QueueGate "$first.release"
-        Wait-QueueRecordCount -Count 2
-        Wait-QueueRecordCount -Kind completion -Count 2
-        $prompt = @(Get-QueueRecords -Kind prompt)[1]
-        $prompt.text | Should -Match ([regex]::Escape($failure))
-        Assert-QueueShellContext -Text $prompt.text -Directory $script:runDirectory
-        Assert-QueuePromptCountStable 2
-
-        # Negative control: genuine C/D-producing shell work, unlike redraw,
-        # must still invalidate a later pending automatic fix.
-        $next = "QUEUE_HOLD_NEXT_$script:token"
-        Send-QueueInput $next
-        Wait-QueueRecordCount -Count 3
-        Wait-QueueText ([regex]::Escape("START_$next"))
-        Invoke-QueueShellCommand "QUEUE_ERROR_OBSOLETE_$script:token" -Failure
-        Assert-QueueSize 1
-        Invoke-QueueShellCommand "QUEUE_SUCCESS_AFTER_REDRAW_$script:token"
-        Assert-QueueSize 0
-        Open-QueueGate "$next.release"
-        Wait-QueueRecordCount -Kind completion -Count 3
-        Assert-QueuePromptCountStable 3 -Seconds 2
     }
 }

@@ -16,14 +16,6 @@ pub enum CommandKind {
     Clear,
     Stop,
     New,
-    /// Run the auto-fix prompt on demand.
-    ///
-    /// Submits the `auto-fix.md` instruction overlay plus the active
-    /// terminal pane's recent output to the agent — the same pipeline the
-    /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
-    /// invoked manually. Any text after `/fix` is passed through as an
-    /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
-    Fix,
     /// Replace the shared master and Agent CLI pool. Each viable helper keeps
     /// its pane and reconnects its immutable binding over the stable pipe with
     /// a clean session. Only an unavailable helper requires pane recreation.
@@ -92,12 +84,6 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
         completion_behavior: CompletionBehavior::ExecuteImmediately,
-    },
-    CommandSpec {
-        name: "fix",
-        summary_key: "commands.fix.summary",
-        kind: CommandKind::Fix,
-        completion_behavior: CompletionBehavior::OptionalFreeText,
     },
     CommandSpec {
         name: "restart",
@@ -179,7 +165,7 @@ pub struct ParsedCommand {
     pub kind: CommandKind,
     pub spec: &'static CommandSpec,
     /// Anything after the command name (trimmed, may be empty). Consumed by
-    /// arg-taking commands (`/fix <hint>`); zero-arg commands ignore it.
+    /// arg-taking commands; zero-arg commands ignore it.
     pub rest: String,
 }
 
@@ -416,15 +402,11 @@ mod tests {
     }
 
     #[test]
-    fn fix_parses_with_optional_hint() {
-        // Bare /fix: no hint.
-        let bare = parse("/fix").unwrap();
-        assert_eq!(bare.kind, CommandKind::Fix);
-        assert_eq!(bare.rest, "");
-        // /fix <hint>: the trailing text is captured verbatim.
-        let hinted = parse("/fix the path looks wrong").unwrap();
-        assert_eq!(hinted.kind, CommandKind::Fix);
-        assert_eq!(hinted.rest, "the path looks wrong");
+    fn fix_is_not_a_builtin_command() {
+        assert!(lookup("fix").is_none());
+        assert!(matches("fix").is_empty());
+        assert!(parse("/fix").is_none());
+        assert!(parse("/fix investigate this failure").is_none());
     }
 
     #[test]
@@ -519,7 +501,6 @@ mod tests {
                 ("help", ExecuteImmediately),
                 ("clear", ExecuteImmediately),
                 ("new", ExecuteImmediately),
-                ("fix", OptionalFreeText),
                 ("restart", ExecuteImmediately),
                 ("stop", ExecuteImmediately),
                 ("sessions", ExecuteImmediately),

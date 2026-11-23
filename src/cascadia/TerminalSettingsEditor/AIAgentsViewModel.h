@@ -167,13 +167,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CancelCustomModelProvider();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
-        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> AutoErrorHandlingList() const { return _autoErrorHandlingList; }
-        winrt::Windows::Foundation::IInspectable CurrentAutoErrorHandling();
-        void CurrentAutoErrorHandling(const winrt::Windows::Foundation::IInspectable& value);
         bool AgentSessionManagementEnabled() const;
         void AgentSessionManagementEnabled(bool value);
         bool HasAgentSessionManagementEnabled() const;
         bool CanConfigureAgentSessionManagement() const;
+        void InitializeShellIntegration();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, RenderAgentMarkdown);
 
@@ -187,7 +185,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
         bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
-        bool IsAutoErrorHandlingPolicyRestricted() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
         bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
         bool IsYoloModePolicyLocked() const { return _GlobalSettings.IsYoloModePolicyLocked(); }
 
@@ -200,7 +197,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     private:
         Model::GlobalAppSettings _GlobalSettings;
         std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> _agentPolicySnapshot;
-        std::tuple<bool, bool, bool, bool, bool, winrt::hstring, winrt::hstring> _agentPolicyState;
+        std::tuple<bool, bool, bool, bool, winrt::hstring, winrt::hstring> _agentPolicyState;
         const std::tuple<winrt::hstring, bool, winrt::hstring, bool> _sourceModelSettings;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _acpAgentList;
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry> _delegateAgentList;
@@ -210,8 +207,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;
-        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> _autoErrorHandlingList;
-
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
         bool _isCustomModelProvidersExpanded{ false };

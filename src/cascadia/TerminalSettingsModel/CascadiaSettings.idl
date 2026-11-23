@@ -70,6 +70,10 @@ namespace Microsoft.Terminal.Settings.Model
 
         // Keep new members append-only to preserve existing WinRT vtable slots.
         void LogAgentProviderChanges(String previousAcpAgent, String previousDelegateAgent);
+
+        // Copies the default profile's portable appearance from a Windows Terminal settings document.
+        // Profile launch settings and file-based media resources are not imported.
+        Boolean ImportAppearanceFromSettingsJson(String sourceSettingsJson);
     }
 
     runtimeclass FragmentProfileEntry

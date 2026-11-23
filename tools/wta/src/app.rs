@@ -6791,9 +6791,7 @@ impl App {
                         spec,
                         rest: String::new(),
                     };
-                    if parsed.kind != CommandKind::Fix {
-                        self.current_tab_mut().discard_input();
-                    }
+                    self.current_tab_mut().discard_input();
                     self.handle_slash_command(parsed);
                     return true;
                 }
@@ -6809,10 +6807,7 @@ impl App {
         }
         match commands::classify(&self.current_tab().input) {
             ParseOutcome::Command(cmd) => {
-                // /fix consumes the draft only after queue capacity has been checked.
-                if cmd.kind != CommandKind::Fix {
-                    self.current_tab_mut().discard_input();
-                }
+                self.current_tab_mut().discard_input();
                 self.handle_slash_command(cmd);
                 true
             }
@@ -6872,7 +6867,6 @@ impl App {
             CommandKind::Clear => self.cmd_clear(),
             CommandKind::Stop => self.cmd_stop(in_flight, cancelling),
             CommandKind::New => self.cmd_new(prompt_blocked),
-            CommandKind::Fix => self.cmd_fix(prompt_blocked, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
@@ -6985,35 +6979,14 @@ impl App {
         self.project_tab_state(&tab_id);
     }
 
-    /// `/fix [hint]` — run the auto-fix prompt on demand against the active
-    /// terminal pane. Reuses the error-triggered autofix pipeline
-    /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
-    /// instruction overlay plus the working pane's recent output, and any `hint` typed
-    /// after `/fix` is appended as an extra steer.
-    ///
-    /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
-    /// there is no failing-pane notification, so (1) the helper's captured
-    /// source pane is resolved in the ACP client task; and
-    /// (2) the turn context starts without a target and is late-bound once
-    /// the client task resolves that working pane (`AppEvent::PromptTargetResolved` →
-    /// `apply_prompt_target_resolved`), so `turn_execute_card` fills
-    /// `Send.parent` with a real pane. The bottom-bar Pending pill is *not*
-    /// armed — that UI is tied to a specific failing pane, and a command typed
-    /// into the agent pane surfaces its result there directly.
-    ///
-    /// Queues behind active work without installing or replacing a turn.
-    fn cmd_fix(&mut self, _in_flight: bool, hint: String) {
-        self.enqueue_input(Some(hint.trim().to_owned()));
-    }
-
-    /// Late-bind a manual `/fix`'s target pane. The working pane is resolved
-    /// in the ACP client task (it isn't known when `cmd_fix` submits) and
-    /// plumbed back via [`AppEvent::PromptTargetResolved`]. The same event
+    /// Late-bind a manual fix's target pane. The working pane is resolved
+    /// in the ACP client task and plumbed back via
+    /// [`AppEvent::PromptTargetResolved`]. The same event
     /// binds ordinary planner turns so execution never trusts a
     /// model-generated pane target.
     ///
-    /// Routed by `prompt_id`: a superseded turn (the user fired a newer `/fix`)
-    /// won't match, so a stale resolution is dropped. The event is emitted
+    /// Routed by `prompt_id`: a superseded turn won't match, so a stale
+    /// resolution is dropped. The event is emitted
     /// before the agent responds, so the patch lands while the turn is still
     /// `Submitted` — well before the fix card surfaces or the user executes it.
     fn apply_prompt_target_resolved(
@@ -7064,6 +7037,11 @@ impl App {
             pane = %pane_id,
             "bound authoritative prompt target pane",
         );
+    }
+
+    #[cfg(test)]
+    fn submit_manual_fix_for_test(&mut self, hint: String) {
+        self.enqueue_input(Some(hint.trim().to_owned()));
     }
 
     /// `/sessions` — open the Agents picker for the active tab.
