@@ -241,7 +241,10 @@ namespace winrt::TerminalApp::implementation
             const auto previousPanel = SshHostsDock().Children().GetAt(0).try_as<Grid>();
             if (previousPanel && previousPanel.Children().Size() > 1)
             {
-                query = previousPanel.Children().GetAt(1).try_as<TextBox>().Text();
+                if (const auto previousSearch = previousPanel.Children().GetAt(1).try_as<TextBox>())
+                {
+                    query = previousSearch.Text();
+                }
             }
         }
         SshHostsDock().Children().Clear();
@@ -299,8 +302,9 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto populateTree = [tree, hosts, hostNodes](const hstring& filter) {
-            tree.RootNodes().Clear();
             hostNodes->clear();
+            tree.SelectedItem(nullptr);
+            tree.RootNodes().Clear();
             std::map<std::wstring, TreeControls::TreeViewNode, std::less<>> groups;
             const auto groupNode = [&](const auto& self, const std::wstring_view path) -> TreeControls::TreeViewNode {
                 if (const auto existing = groups.find(path); existing != groups.end())
@@ -407,7 +411,7 @@ namespace winrt::TerminalApp::implementation
         Grid::SetRow(noMatches, 2);
         panel.Children().Append(tree);
         panel.Children().Append(noMatches);
-        search.TextChanged([populateTree, selectedHost, hostNodes, noMatches](auto&& sender, auto&&) {
+        search.TextChanged([populateTree, selectedHost, hostNodes, noMatches](const Windows::Foundation::IInspectable& sender, auto&&) {
             selectedHost->reset();
             const auto filter = sender.as<TextBox>().Text();
             populateTree(filter);
@@ -550,8 +554,8 @@ namespace winrt::TerminalApp::implementation
                         {
                             OpenSsh::HostStore store{ std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() } };
                             const auto count = store.ImportAliases(aliases);
-                            status.Text(RS_(count == 0 ? L"SshHostsImportNothingNew" : L"SshHostsImportSucceeded"));
-                            *imported = true;
+                            status.Text(count == 0 ? RS_(L"SshHostsImportNothingNew") : RS_(L"SshHostsImportSucceeded"));
+                            *imported = count != 0;
                         }
                         catch (...)
                         {
