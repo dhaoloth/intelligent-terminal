@@ -1,7 +1,7 @@
 # State
 
 Task: Adapt Intelligent Terminal into a Windows SSH manager and agent workspace.
-Status: The SSH manager and native agent discovery checkpoint is published on `dev/dhaoloth/ssh-agent-workspace`. Windows CI and runtime verification are open.
+Status: The SSH manager and native agent discovery checkpoint is published on `dev/dhaoloth/ssh-agent-workspace`. GitHub Actions produced an unsigned x64 MSIX for `6ffc4c2f2`. C++ unit and desktop runtime verification are open.
 Scope: Windows terminal and SSH management, local agents in WSL, and agents on remote SSH hosts.
 
 ## Verified
@@ -54,7 +54,8 @@ Scope: Windows terminal and SSH management, local agents in WSL, and agents on r
 - [x64 MSIX run for `9de053839`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45190010387): Release WTA built. The runner could not parse the LF-only package script. A Git checkout fixture verified the CRLF attribute correction.
 - [x64 MSIX run for `994fb7c8a`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45194122948): The script parsed and reached MSBuild. Clean Release build exposed the missing direct MIDL generation dependency on `Host.Proxy.vcxproj` in `TerminalConnection.vcxproj`.
 - [Windows PR CI run for `6ffc4c2f2`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45198926925): WindowsTerminal.exe linked with the SSH tree and SFTP browser. Rust unit results were 3,153 passed, zero failed, and six ignored, with security analysis completed. The C++ job stopped compiling the appearance test because two calls used the wrong WinRT types; the test calls have been corrected.
-- [x64 MSIX run for `6ffc4c2f2`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45198926816): Attempt one built Release WTA and stopped during MSBuild after GitHub canceled the step. The log did not report a compiler error. Attempt two checks the same commit.
+- [Windows PR CI run for `4b5db7ceb`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45206208588): WindowsTerminal.exe linked and Rust passed. C++ test compilation reached the local suite and reported one obsolete argument in a Shared WTA test. The test now uses the current method signature.
+- [x64 MSIX run for `6ffc4c2f2`](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45198926816/attempts/2): Built `CascadiaPackage_0.8.0.20_x64.msix`. The [downloaded artifact](https://github.com/dhaoloth/intelligent-terminal/actions/runs/45198926816/artifacts/14833479996) passed ZIP integrity and x64 manifest checks and contains `WindowsTerminal.exe`, `wta.exe`, and the x64 XAML dependency. MSIX SHA-256: `02780c97006410d3115f85fea8d5d1d88faacfdb71097edd31be5ad35d62d938`.
 - SFTP transport source: `tools/wta/src/cli/native_sftp.rs` and `src/cascadia/TerminalApp/TerminalPage.Sftp.cpp`. A standalone Rust 1.93 Windows-target type check passed. A local OpenSSH subsystem fixture verified directory listing and its cap, downloading a name containing Cyrillic and a space, rejecting an existing local destination, and temporary-file cleanup after a missing remote file.
 - Intelligent Terminal: `src/cascadia/TerminalSettingsModel/SshHostGenerator.cpp`, `src/cascadia/TerminalSettingsModel/CascadiaSettingsSerialization.cpp`, `src/cascadia/TerminalSettingsEditor/Profiles_Base.xaml`, `src/cascadia/TerminalApp/TabStrip.xaml`, and `tools/wta/src/agent_check.rs`.
 - Termora: `../termora/src/main/kotlin/app/termora/tree/NewHostTree.kt`, `../termora/src/main/kotlin/app/termora/plugin/internal/ssh/SSHHostOptionsPane.kt`, and `../termora/src/main/kotlin/app/termora/transfer/internal/sftp/SFTPTransferProtocolProvider.kt`.

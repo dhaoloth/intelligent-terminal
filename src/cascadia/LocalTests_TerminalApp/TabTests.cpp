@@ -14795,12 +14795,7 @@ namespace TerminalAppLocalTests
         auto page = _restoreBindingsSetup();
         TestOnUIThread([&]() {
             page->_settings.GlobalSettings().AcpAgent(L"");
-            auto fallbackCalled = false;
-            const auto arguments = page->_BuildSharedWtaExtraArgs([&]() {
-                fallbackCalled = true;
-                return winrt::hstring{};
-            });
-            VERIFY_IS_TRUE(fallbackCalled);
+            const auto arguments = page->_BuildSharedWtaExtraArgs();
             VERIFY_IS_TRUE(std::ranges::find(arguments, L"--agent=") != arguments.end());
             VERIFY_IS_TRUE(std::ranges::find(arguments, L"--agent") == arguments.end());
         });
