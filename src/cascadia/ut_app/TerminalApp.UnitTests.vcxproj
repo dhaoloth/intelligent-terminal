@@ -42,6 +42,7 @@
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
     <ClCompile Include="WtaProcessTests.cpp" />
+    <ClCompile Include="SshHostStoreTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>

@@ -935,11 +935,12 @@ namespace winrt::TerminalApp::implementation
 
         void _CreateNewTabFlyout();
         void _InitializeSshHosts();
+        safe_void_coroutine _PreviewOpenSshAliases(winrt::Windows::UI::Xaml::Controls::Button button, winrt::Windows::UI::Xaml::Controls::TextBlock status);
         void _UpdateSshHostsDockLayout();
         void _ToggleWorkspaceAgentSessions();
         void _UpdateWorkspaceAgentSessions();
         safe_void_coroutine _FocusWorkspaceAgentSession(uint64_t contentId, winrt::guid paneId);
-        void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host, std::wstring_view agent = {});
+        void _ConnectSshHost(const ::Microsoft::Terminal::OpenSsh::SavedHost& host, std::wstring_view agent = {}, bool sftp = false);
         void _ConnectWslDistribution(std::wstring_view distribution, std::wstring_view agent = {});
         bool _OpenConnectionTab(std::wstring_view commandline, std::wstring_view title, const WorkspaceAgentLaunch* workspaceAgent = nullptr);
         safe_void_coroutine _ShowSshHosts(std::optional<::Microsoft::Terminal::OpenSsh::SavedHost> host = std::nullopt);

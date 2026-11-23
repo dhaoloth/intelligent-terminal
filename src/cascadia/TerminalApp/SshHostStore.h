@@ -13,6 +13,31 @@
 
 namespace Microsoft::Terminal::OpenSsh
 {
+    enum class HostAuthentication
+    {
+        OpenSsh,
+        Password,
+        IdentityFile,
+    };
+
+    enum class ForwardDirection
+    {
+        Local,
+        Remote,
+        Dynamic,
+    };
+
+    struct PortForward
+    {
+        ForwardDirection direction{ ForwardDirection::Local };
+        std::wstring listenHost;
+        uint32_t listenPort{};
+        std::wstring destinationHost;
+        uint32_t destinationPort{};
+
+        bool operator==(const PortForward&) const = default;
+    };
+
     struct SavedHost
     {
         std::wstring id;
@@ -24,6 +49,8 @@ namespace Microsoft::Terminal::OpenSsh
         std::wstring identityFile;
         bool usesOpenSshConfig{ false };
         std::wstring jumpHostAlias;
+        HostAuthentication authentication{ HostAuthentication::OpenSsh };
+        std::vector<PortForward> forwards{};
 
         bool operator==(const SavedHost&) const = default;
     };
@@ -38,12 +65,15 @@ namespace Microsoft::Terminal::OpenSsh
         Username,
         IdentityFile,
         JumpHostAlias,
+        Forwarding,
     };
 
     InvalidHostField ValidateHost(const SavedHost& host);
     uint32_t ParsePort(std::wstring_view value) noexcept;
     std::wstring BuildCommandline(std::wstring_view executable, const SavedHost& host, std::wstring_view nativeAgent = {});
+    std::wstring BuildSftpCommandline(std::wstring_view sftpExecutable, std::wstring_view sshExecutable, const SavedHost& host);
     std::vector<std::wstring> LoadConfigAliases();
+    std::vector<std::wstring> LoadConfigAliases(const std::filesystem::path& configPath);
 
     class HostStore
     {

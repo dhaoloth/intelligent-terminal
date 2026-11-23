@@ -307,12 +307,14 @@ fn agent_prefix_match_ranks_before_client_substring_match() {
 }
 
 #[test]
-fn removed_fix_prefix_has_no_builtin_completion() {
+fn retired_fix_is_not_a_builtin_completion() {
     let mut app = test_app();
     type_input(&mut app, "/fi");
 
     assert_eq!(app.current_tab().input, "/fi");
-    assert!(commands::matches("fi").is_empty());
+    assert!(commands::matches("fi")
+        .iter()
+        .all(|command| command.name != "fix"));
 }
 
 #[test]

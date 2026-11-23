@@ -68,3 +68,5 @@
 
 
 .github/workflows/*.lock.yml linguist-generated=true
+
+/_build_msix_x64.cmd text eol=crlf

@@ -5,6 +5,7 @@ on:
     branches: [dev/dhaoloth/ssh-agent-workspace]
     paths:
       - '.github/workflows/build-msix-x64.yml'
+      - '.gitattributes'
       - 'src/**'
       - 'tools/**'
       - 'build/**'
@@ -62,6 +63,13 @@ jobs:
           $packages = @(Get-ChildItem src/cascadia/CascadiaPackage/AppPackages -Recurse -Filter *.msix -File)
           if ($packages.Count -ne 1) { throw "Expected one x64 MSIX, found $($packages.Count)." }
           $package = $packages[0]
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+          try {
+            foreach ($required in @('AppxManifest.xml', 'WindowsTerminal.exe', 'wta.exe')) {
+              if ($required -notin $archive.Entries.Name) { throw "Missing package entry: $required" }
+            }
+          }
+          finally { $archive.Dispose() }
           $digest = (Get-FileHash -Algorithm SHA256 $package.FullName).Hash
           "Commit: $env:GITHUB_SHA`nPackage: $($package.Name)`nSHA-256: $digest" >> $env:GITHUB_STEP_SUMMARY
 

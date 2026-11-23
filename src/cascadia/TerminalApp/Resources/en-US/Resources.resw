@@ -1897,6 +1897,10 @@ For all available options, run 'wt new-tab --help'.</value>
   <data name="SshHostsImportFailed" xml:space="preserve">
     <value>Could not import OpenSSH aliases.</value>
   </data>
+  <data name="SshHostsImportReading" xml:space="preserve">
+    <value>Reading OpenSSH configuration…</value>
+    <comment>{Locked="OpenSSH"}</comment>
+  </data>
   <data name="SshHostsImportReadFailed" xml:space="preserve">
     <value>Could not read OpenSSH aliases.</value>
   </data>
@@ -1929,6 +1933,22 @@ For all available options, run 'wt new-tab --help'.</value>
   </data>
   <data name="SshHostsUsername" xml:space="preserve">
     <value>Username (optional)</value>
+  </data>
+  <data name="SshHostsAuthentication" xml:space="preserve">
+    <value>Authentication</value>
+  </data>
+  <data name="SshHostsAuthenticationOpenSsh" xml:space="preserve">
+    <value>OpenSSH defaults and agent</value>
+    <comment>{Locked="OpenSSH"}</comment>
+  </data>
+  <data name="SshHostsAuthenticationPassword" xml:space="preserve">
+    <value>Password prompt</value>
+  </data>
+  <data name="SshHostsAuthenticationKey" xml:space="preserve">
+    <value>Private key</value>
+  </data>
+  <data name="SshHostsBrowseIdentity" xml:space="preserve">
+    <value>Choose private key</value>
   </data>
   <data name="SshHostsIdentity" xml:space="preserve">
     <value>Private key path (optional)</value>
@@ -1974,6 +1994,47 @@ For all available options, run 'wt new-tab --help'.</value>
     <value>Enter a different OpenSSH host alias with letters, digits, periods, hyphens or underscores.</value>
     <comment>{Locked="OpenSSH"}</comment>
   </data>
+  <data name="SshHostsForwarding" xml:space="preserve">
+    <value>Port forwarding for the SSH tab</value>
+  </data>
+  <data name="SshHostsAddForward" xml:space="preserve">
+    <value>Add port forward</value>
+  </data>
+  <data name="SshHostsRemoveForward" xml:space="preserve">
+    <value>Remove this forward</value>
+  </data>
+  <data name="SshHostsForwardDirection" xml:space="preserve">
+    <value>Forward type</value>
+  </data>
+  <data name="SshHostsForwardLocal" xml:space="preserve">
+    <value>Local</value>
+  </data>
+  <data name="SshHostsForwardRemote" xml:space="preserve">
+    <value>Remote</value>
+  </data>
+  <data name="SshHostsForwardDynamic" xml:space="preserve">
+    <value>Dynamic (SOCKS)</value>
+    <comment>{Locked="SOCKS"}</comment>
+  </data>
+  <data name="SshHostsForwardListenHost" xml:space="preserve">
+    <value>Bind address</value>
+  </data>
+  <data name="SshHostsForwardListenHostHint" xml:space="preserve">
+    <value>Optional. OpenSSH default when empty.</value>
+    <comment>{Locked="OpenSSH"}</comment>
+  </data>
+  <data name="SshHostsForwardListenPort" xml:space="preserve">
+    <value>Listen port</value>
+  </data>
+  <data name="SshHostsForwardDestinationHost" xml:space="preserve">
+    <value>Destination host</value>
+  </data>
+  <data name="SshHostsForwardDestinationPort" xml:space="preserve">
+    <value>Destination port</value>
+  </data>
+  <data name="SshHostsInvalidForward" xml:space="preserve">
+    <value>Check the addresses and port numbers for each forward. Enter ports from 1 to 65535.</value>
+  </data>
   <data name="SshHostsIdentityUnavailable" xml:space="preserve">
     <value>The selected private key file is missing or inaccessible.</value>
   </data>
@@ -1988,6 +2049,14 @@ For all available options, run 'wt new-tab --help'.</value>
   </data>
   <data name="SshHostsChanged" xml:space="preserve">
     <value>This SSH host changed in another window. The latest changes were kept.</value>
+  </data>
+  <data name="SshHostsOpenSftp" xml:space="preserve">
+    <value>Open SFTP terminal</value>
+    <comment>{Locked="SFTP"}</comment>
+  </data>
+  <data name="SshHostsSftpMissing" xml:space="preserve">
+    <value>The OpenSSH SFTP client is unavailable.</value>
+    <comment>{Locked="OpenSSH","SFTP"}</comment>
   </data>
   <data name="SshHostsOpenSshMissing" xml:space="preserve">
     <value>Windows OpenSSH Client was not found. Install it to connect to this host.</value>

@@ -16,6 +16,7 @@
 #include "../inc/OpenSshExecutable.h"
 #include "../inc/WslDistributions.h"
 #include "../inc/WtaProcess.h"
+#include "../WinRTUtils/inc/Utils.h"
 #include "../../types/inc/utils.hpp"
 
 using namespace winrt;
@@ -117,7 +118,7 @@ namespace
                     args.append(L" --ssh-jump-alias");
                     _appendArgument(args, host->jumpHostAlias);
                 }
-                if (!host->identityFile.empty())
+                if (host->authentication == OpenSsh::HostAuthentication::IdentityFile)
                 {
                     args.append(L" --ssh-identity-file");
                     _appendArgument(args, host->identityFile);
@@ -290,6 +291,8 @@ namespace
             return RS_(L"SshHostsInvalidIdentity");
         case InvalidHostField::JumpHostAlias:
             return RS_(L"SshHostsInvalidJumpAlias");
+        case InvalidHostField::Forwarding:
+            return RS_(L"SshHostsInvalidForward");
         default:
             return {};
         }
@@ -297,9 +300,10 @@ namespace
 
     struct SshHostsDialog : std::enable_shared_from_this<SshHostsDialog>
     {
-        explicit SshHostsDialog(const std::filesystem::path& settingsDirectory, std::optional<OpenSsh::SavedHost> host) :
+        SshHostsDialog(const std::filesystem::path& settingsDirectory, std::optional<OpenSsh::SavedHost> host, const HWND owner) :
             _store{ settingsDirectory },
-            _selected{ std::move(host) }
+            _selected{ std::move(host) },
+            _owner{ owner }
         {
         }
 
@@ -317,6 +321,12 @@ namespace
             _port.Header(box_value(RS_(L"SshHostsPort")));
             _port.MaxLength(5);
             _username.Header(box_value(RS_(L"SshHostsUsername")));
+            _authentication.Header(box_value(RS_(L"SshHostsAuthentication")));
+            _authentication.Items().Append(box_value(RS_(L"SshHostsAuthenticationOpenSsh")));
+            _authentication.Items().Append(box_value(RS_(L"SshHostsAuthenticationPassword")));
+            _authentication.Items().Append(box_value(RS_(L"SshHostsAuthenticationKey")));
+            _browseIdentity.Content(box_value(RS_(L"SshHostsBrowseIdentity")));
+            _browseIdentity.IsEnabled(_owner != nullptr);
             _identity.Header(box_value(RS_(L"SshHostsIdentity")));
             _identity.PlaceholderText(RS_(L"SshHostsIdentityHint"));
             _jumpAlias.Header(box_value(RS_(L"SshHostsJumpAlias")));
@@ -327,14 +337,13 @@ namespace
             _address.IsEnabled(!usesConfig);
             _port.IsEnabled(!usesConfig);
             _username.IsEnabled(!usesConfig);
-            _identity.IsEnabled(!usesConfig);
 
             _save.Content(box_value(RS_(L"SshHostsSave")));
 
             StackPanel editor;
             editor.Spacing(6);
             editor.Margin({ 12, 0, 0, 0 });
-            for (const auto& field : { _name, _group, _address, _port, _username, _identity })
+            for (const auto& field : { _name, _group, _address, _port, _username })
             {
                 editor.Children().Append(field);
             }
@@ -348,7 +357,26 @@ namespace
             }
             else
             {
+                editor.Children().Append(_authentication);
+                editor.Children().Append(_identity);
+                editor.Children().Append(_browseIdentity);
                 editor.Children().Append(_jumpAlias);
+                TextBlock forwardingLabel;
+                forwardingLabel.Text(RS_(L"SshHostsForwarding"));
+                forwardingLabel.Margin({ 0, 8, 0, 0 });
+                editor.Children().Append(forwardingLabel);
+                _forwardPanel.Spacing(8);
+                editor.Children().Append(_forwardPanel);
+                Button addForward;
+                addForward.Content(box_value(RS_(L"SshHostsAddForward")));
+                addForward.Click([weak = weak_from_this()](auto&&, auto&&) {
+                    if (const auto self = weak.lock())
+                    {
+                        self->_appendForward({});
+                        self->_updateButtons();
+                    }
+                });
+                editor.Children().Append(addForward);
             }
             editor.Children().Append(_save);
             _status.TextWrapping(TextWrapping::Wrap);
@@ -369,6 +397,18 @@ namespace
                     }
                 });
             }
+            _authentication.SelectionChanged([weak](auto&&, auto&&) {
+                if (const auto self = weak.lock())
+                {
+                    self->_updateButtons();
+                }
+            });
+            _browseIdentity.Click([weak](auto&&, auto&&) {
+                if (const auto self = weak.lock())
+                {
+                    self->_browseForIdentity();
+                }
+            });
             _save.Click([weak](auto&&, auto&&) {
                 if (const auto self = weak.lock())
                 {
@@ -382,25 +422,84 @@ namespace
             _port.Text(std::to_wstring(display.port));
             _username.Text(display.username);
             _identity.Text(display.identityFile);
+            _authentication.SelectedIndex(static_cast<int32_t>(display.authentication));
             _jumpAlias.Text(display.jumpHostAlias);
+            if (!usesConfig)
+            {
+                for (const auto& forward : display.forwards)
+                {
+                    _appendForward(forward);
+                }
+            }
             _updateButtons();
         }
 
     private:
+        struct ForwardRow
+        {
+            StackPanel panel;
+            ComboBox direction;
+            TextBox listenHost;
+            TextBox listenPort;
+            TextBox destinationHost;
+            TextBox destinationPort;
+
+            OpenSsh::ForwardDirection Direction() const
+            {
+                return static_cast<OpenSsh::ForwardDirection>(std::max(0, direction.SelectedIndex()));
+            }
+
+            OpenSsh::PortForward Value() const
+            {
+                const auto kind = Direction();
+                const auto dynamic = kind == OpenSsh::ForwardDirection::Dynamic;
+                return {
+                    kind,
+                    std::wstring{ listenHost.Text() },
+                    OpenSsh::ParsePort(listenPort.Text()),
+                    dynamic ? std::wstring{} : std::wstring{ destinationHost.Text() },
+                    dynamic ? 0u : OpenSsh::ParsePort(destinationPort.Text()),
+                };
+            }
+
+            void UpdateDestinationVisibility() const
+            {
+                const auto visible = Direction() == OpenSsh::ForwardDirection::Dynamic ? Visibility::Collapsed : Visibility::Visible;
+                destinationHost.Visibility(visible);
+                destinationPort.Visibility(visible);
+            }
+        };
+
         OpenSsh::HostStore _store;
         std::optional<OpenSsh::SavedHost> _selected;
+        HWND _owner;
         TextBox _name;
         TextBox _group;
         TextBox _address;
         TextBox _port;
         TextBox _username;
+        ComboBox _authentication;
         TextBox _identity;
+        Button _browseIdentity;
         TextBox _jumpAlias;
+        StackPanel _forwardPanel;
+        std::vector<std::shared_ptr<ForwardRow>> _forwardRows;
         Button _save;
         TextBlock _status;
 
         OpenSsh::SavedHost _draft() const
         {
+            const auto usesConfig = _selected && _selected->usesOpenSshConfig;
+            const auto authentication = static_cast<OpenSsh::HostAuthentication>(std::max(0, _authentication.SelectedIndex()));
+            const auto identityFile = usesConfig || authentication == OpenSsh::HostAuthentication::IdentityFile ?
+                                          std::wstring{ _identity.Text() } :
+                                          std::wstring{};
+            std::vector<OpenSsh::PortForward> forwards;
+            forwards.reserve(_forwardRows.size());
+            for (const auto& row : _forwardRows)
+            {
+                forwards.emplace_back(row->Value());
+            }
             return {
                 _selected ? _selected->id : std::wstring{},
                 std::wstring{ _name.Text() },
@@ -408,17 +507,112 @@ namespace
                 std::wstring{ _address.Text() },
                 OpenSsh::ParsePort(_port.Text()),
                 std::wstring{ _username.Text() },
-                std::wstring{ _identity.Text() },
-                _selected && _selected->usesOpenSshConfig,
+                identityFile,
+                usesConfig,
                 std::wstring{ _jumpAlias.Text() },
+                authentication,
+                std::move(forwards),
             };
         }
 
         void _updateButtons()
         {
             const auto draft = _draft();
+            const auto showsIdentity = !draft.usesOpenSshConfig && draft.authentication == OpenSsh::HostAuthentication::IdentityFile;
+            _identity.Visibility(showsIdentity ? Visibility::Visible : Visibility::Collapsed);
+            _browseIdentity.Visibility(showsIdentity ? Visibility::Visible : Visibility::Collapsed);
             const auto unchanged = _selected && *_selected == draft;
             _save.IsEnabled(!unchanged && (_selected || !draft.name.empty() || !draft.address.empty()));
+        }
+
+        void _appendForward(const OpenSsh::PortForward& forward)
+        {
+            const auto row = std::make_shared<ForwardRow>();
+            row->panel.Spacing(4);
+            row->direction.Header(box_value(RS_(L"SshHostsForwardDirection")));
+            row->direction.Items().Append(box_value(RS_(L"SshHostsForwardLocal")));
+            row->direction.Items().Append(box_value(RS_(L"SshHostsForwardRemote")));
+            row->direction.Items().Append(box_value(RS_(L"SshHostsForwardDynamic")));
+            row->direction.SelectedIndex(static_cast<int32_t>(forward.direction));
+
+            row->listenHost.Header(box_value(RS_(L"SshHostsForwardListenHost")));
+            row->listenHost.PlaceholderText(RS_(L"SshHostsForwardListenHostHint"));
+            row->listenHost.Text(forward.listenHost);
+            row->listenPort.Header(box_value(RS_(L"SshHostsForwardListenPort")));
+            row->listenPort.MaxLength(5);
+            if (forward.listenPort != 0)
+            {
+                row->listenPort.Text(std::to_wstring(forward.listenPort));
+            }
+            row->destinationHost.Header(box_value(RS_(L"SshHostsForwardDestinationHost")));
+            row->destinationHost.Text(forward.destinationHost);
+            row->destinationPort.Header(box_value(RS_(L"SshHostsForwardDestinationPort")));
+            row->destinationPort.MaxLength(5);
+            if (forward.destinationPort != 0)
+            {
+                row->destinationPort.Text(std::to_wstring(forward.destinationPort));
+            }
+            const auto weak = weak_from_this();
+            const auto weakRow = std::weak_ptr<ForwardRow>{ row };
+            row->direction.SelectionChanged([weak, weakRow](auto&&, auto&&) {
+                if (const auto selected = weakRow.lock())
+                {
+                    selected->UpdateDestinationVisibility();
+                }
+                if (const auto self = weak.lock())
+                {
+                    self->_updateButtons();
+                }
+            });
+            row->panel.Children().Append(row->direction);
+            for (const auto& field : { row->listenHost, row->listenPort, row->destinationHost, row->destinationPort })
+            {
+                field.TextChanged([weak](auto&&, auto&&) {
+                    if (const auto self = weak.lock())
+                    {
+                        self->_updateButtons();
+                    }
+                });
+                row->panel.Children().Append(field);
+            }
+
+            Button remove;
+            remove.Content(box_value(RS_(L"SshHostsRemoveForward")));
+            remove.Click([weak, weakRow](auto&&, auto&&) {
+                const auto self = weak.lock();
+                const auto selected = weakRow.lock();
+                if (self && selected)
+                {
+                    const auto children = self->_forwardPanel.Children();
+                    uint32_t index{};
+                    if (children.IndexOf(selected->panel, index))
+                    {
+                        children.RemoveAt(index);
+                    }
+                    std::erase(self->_forwardRows, selected);
+                    self->_updateButtons();
+                }
+            });
+            row->panel.Children().Append(remove);
+            row->UpdateDestinationVisibility();
+            _forwardRows.emplace_back(row);
+            _forwardPanel.Children().Append(row->panel);
+        }
+
+        safe_void_coroutine _browseForIdentity()
+        {
+            const auto lifetime = shared_from_this();
+            try
+            {
+                const auto path = co_await OpenFilePicker(_owner, [](const auto& dialog) {
+                    THROW_IF_FAILED(dialog->SetTitle(RS_(L"SshHostsBrowseIdentity").c_str()));
+                });
+                if (!path.empty())
+                {
+                    _identity.Text(path);
+                }
+            }
+            CATCH_LOG();
         }
 
         void _saveHost()
@@ -775,7 +969,8 @@ namespace winrt::TerminalApp::implementation
             {
                 discovery->results.erase(cached);
             }
-            if (target.host && !target.host->usesOpenSshConfig && target.host->identityFile.empty())
+            if (target.host && !target.host->usesOpenSshConfig &&
+                target.host->authentication == OpenSsh::HostAuthentication::Password)
             {
                 discovery->results.emplace(key, AgentProbeResult{ {}, RS_(L"ConnectionAgentAuthenticationRequired") });
                 _refreshAgentNodes(*rows, key, *discovery);
@@ -827,7 +1022,17 @@ namespace winrt::TerminalApp::implementation
             const auto found = std::ranges::find(*rows, node, &ConnectionRow::node);
             return found == rows->end() ? std::nullopt : std::optional{ *found };
         };
-        tree.RegisterPropertyChangedCallback(TreeControls::TreeView::SelectedItemProperty(), [weakTree, lookup, probeTarget, cancelOtherProbe, selectedHost](auto&&, auto&&) {
+        Button openSftp;
+        openSftp.Content(box_value(RS_(L"SshHostsOpenSftp")));
+        openSftp.IsEnabled(false);
+        openSftp.HorizontalAlignment(HorizontalAlignment::Stretch);
+        openSftp.Click([weak = get_weak(), selectedHost](auto&&, auto&&) {
+            if (const auto page = weak.get(); page && *selectedHost)
+            {
+                page->_ConnectSshHost(**selectedHost, {}, true);
+            }
+        });
+        tree.RegisterPropertyChangedCallback(TreeControls::TreeView::SelectedItemProperty(), [weakTree, lookup, probeTarget, cancelOtherProbe, selectedHost, weakSftp = winrt::make_weak(openSftp)](auto&&, auto&&) {
             selectedHost->reset();
             if (const auto currentTree = weakTree.get())
             {
@@ -838,6 +1043,10 @@ namespace winrt::TerminalApp::implementation
                     *selectedHost = row->target.host;
                     probeTarget(row->target);
                 }
+            }
+            if (const auto button = weakSftp.get())
+            {
+                button.IsEnabled(selectedHost->has_value());
             }
         });
         const auto connectSelected = [weakTree, lookup, openRow]() {
@@ -981,104 +1190,16 @@ namespace winrt::TerminalApp::implementation
         connect.HorizontalAlignment(HorizontalAlignment::Stretch);
         connect.Click([connectSelected](auto&&, auto&&) { connectSelected(); });
         actions.Children().Append(connect);
+        actions.Children().Append(openSftp);
 
         Button importAliases;
         importAliases.Content(box_value(RS_(L"SshHostsImportAliases")));
         importAliases.HorizontalAlignment(HorizontalAlignment::Stretch);
         importAliases.IsEnabled(hostsLoaded);
-        importAliases.Click([weakThis{ get_weak() }, status](auto&&, auto&&) {
-            const auto page = weakThis.get();
-            if (!page)
+        importAliases.Click([weak = get_weak(), status](const winrt::Windows::Foundation::IInspectable& sender, auto&&) {
+            if (const auto page = weak.get())
             {
-                return;
-            }
-            try
-            {
-                auto aliases = OpenSsh::LoadConfigAliases();
-                ContentDialog dialog;
-                dialog.Title(box_value(RS_(L"SshHostsImportPreview")));
-                dialog.PrimaryButtonText(RS_(L"SshHostsImportConfirm"));
-                dialog.CloseButtonText(RS_(L"SshHostsClose"));
-
-                StackPanel preview;
-                preview.Spacing(6);
-                TextBlock description;
-                description.Text(aliases.empty() ? RS_(L"SshHostsImportEmpty") : RS_(L"SshHostsImportDescription"));
-                description.TextWrapping(TextWrapping::Wrap);
-                preview.Children().Append(description);
-                if (!aliases.empty())
-                {
-                    TextBlock aliasList;
-                    std::wstring text;
-                    for (const auto& alias : aliases)
-                    {
-                        if (!text.empty())
-                        {
-                            text.append(L"\n");
-                        }
-                        text.append(alias);
-                    }
-                    aliasList.Text(text);
-                    aliasList.TextWrapping(TextWrapping::Wrap);
-                    preview.Children().Append(aliasList);
-                }
-                ScrollViewer scroll;
-                scroll.MaxHeight(420);
-                scroll.Content(preview);
-                dialog.Content(scroll);
-                dialog.IsPrimaryButtonEnabled(!aliases.empty());
-
-                const auto imported = std::make_shared<bool>(false);
-                dialog.PrimaryButtonClick([weakThis, aliases, imported, status](auto&&, auto&&) {
-                    if (const auto currentPage = weakThis.get())
-                    {
-                        try
-                        {
-                            OpenSsh::HostStore store{ std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() } };
-                            const auto count = store.ImportAliases(aliases);
-                            status.Text(count == 0 ? RS_(L"SshHostsImportNothingNew") : RS_(L"SshHostsImportSucceeded"));
-                            *imported = count != 0;
-                        }
-                        catch (...)
-                        {
-                            if (wil::ResultFromCaughtException() == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION))
-                            {
-                                status.Text(RS_(L"SshHostsWriteBusy"));
-                            }
-                            else
-                            {
-                                LOG_CAUGHT_EXCEPTION();
-                                status.Text(RS_(L"SshHostsImportFailed"));
-                            }
-                        }
-                    }
-                });
-                dialog.Closed([weakThis, imported](auto&&, auto&&) {
-                    if (*imported)
-                    {
-                        if (const auto currentPage = weakThis.get())
-                        {
-                            currentPage->_InitializeSshHosts();
-                        }
-                    }
-                });
-
-                if (const auto presenter = page->_dialogPresenter.get())
-                {
-                    presenter.ShowDialog(dialog);
-                }
-            }
-            catch (...)
-            {
-                if (wil::ResultFromCaughtException() == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION))
-                {
-                    status.Text(RS_(L"SshHostsWriteBusy"));
-                }
-                else
-                {
-                    LOG_CAUGHT_EXCEPTION();
-                    status.Text(RS_(L"SshHostsImportReadFailed"));
-                }
+                page->_PreviewOpenSshAliases(sender.as<Button>(), status);
             }
         });
         actions.Children().Append(importAliases);
@@ -1094,6 +1215,113 @@ namespace winrt::TerminalApp::implementation
         actions.Children().Append(status);
         panel.Children().Append(actions);
         SshHostsDock().Children().Append(panel);
+    }
+
+    safe_void_coroutine TerminalPage::_PreviewOpenSshAliases(Button button, TextBlock status)
+    {
+        const auto lifetime = get_strong();
+        const auto dispatcher = Dispatcher();
+        button.IsEnabled(false);
+        status.Text(RS_(L"SshHostsImportReading"));
+
+        co_await winrt::resume_background();
+        std::vector<std::wstring> aliases;
+        bool readFailed = false;
+        try
+        {
+            aliases = OpenSsh::LoadConfigAliases();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            readFailed = true;
+        }
+        co_await wil::resume_foreground(dispatcher);
+
+        if (_windowCloseAccepted || _windowPanesShutdown)
+        {
+            co_return;
+        }
+        button.IsEnabled(true);
+        status.Text(readFailed ? RS_(L"SshHostsImportReadFailed") : winrt::hstring{});
+        if (readFailed)
+        {
+            co_return;
+        }
+
+        const auto weakThis = get_weak();
+        ContentDialog dialog;
+        dialog.Title(box_value(RS_(L"SshHostsImportPreview")));
+        dialog.PrimaryButtonText(RS_(L"SshHostsImportConfirm"));
+        dialog.CloseButtonText(RS_(L"SshHostsClose"));
+
+        StackPanel preview;
+        preview.Spacing(6);
+        TextBlock description;
+        description.Text(aliases.empty() ? RS_(L"SshHostsImportEmpty") : RS_(L"SshHostsImportDescription"));
+        description.TextWrapping(TextWrapping::Wrap);
+        preview.Children().Append(description);
+        if (!aliases.empty())
+        {
+            TextBlock aliasList;
+            std::wstring text;
+            for (const auto& alias : aliases)
+            {
+                if (!text.empty())
+                {
+                    text.append(L"\n");
+                }
+                text.append(alias);
+            }
+            aliasList.Text(text);
+            aliasList.TextWrapping(TextWrapping::Wrap);
+            preview.Children().Append(aliasList);
+        }
+        ScrollViewer scroll;
+        scroll.MaxHeight(420);
+        scroll.Content(preview);
+        dialog.Content(scroll);
+        dialog.IsPrimaryButtonEnabled(!aliases.empty());
+
+        const auto imported = std::make_shared<bool>(false);
+        dialog.PrimaryButtonClick([weakThis, aliases, imported, status](auto&&, auto&&) {
+            if (const auto currentPage = weakThis.get())
+            {
+                try
+                {
+                    OpenSsh::HostStore store{ std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() } };
+                    const auto count = store.ImportAliases(aliases);
+                    status.Text(count == 0 ? RS_(L"SshHostsImportNothingNew") : RS_(L"SshHostsImportSucceeded"));
+                    *imported = count != 0;
+                }
+                catch (...)
+                {
+                    if (wil::ResultFromCaughtException() == HRESULT_FROM_WIN32(ERROR_SHARING_VIOLATION))
+                    {
+                        status.Text(RS_(L"SshHostsWriteBusy"));
+                    }
+                    else
+                    {
+                        LOG_CAUGHT_EXCEPTION();
+                        status.Text(RS_(L"SshHostsImportFailed"));
+                    }
+                }
+            }
+        });
+        dialog.Closed([weakThis, imported](auto&&, auto&&) {
+            if (*imported)
+            {
+                if (const auto currentPage = weakThis.get())
+                {
+                    currentPage->_InitializeSshHosts();
+                }
+            }
+        });
+
+        if (const auto presenter = _dialogPresenter.get())
+        {
+            presenter.ShowDialog(dialog);
+        }
     }
 
     bool TerminalPage::_OpenConnectionTab(const std::wstring_view commandline, const std::wstring_view title, const WorkspaceAgentLaunch* workspaceAgent)
@@ -1162,7 +1390,7 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    void TerminalPage::_ConnectSshHost(const OpenSsh::SavedHost& host, const std::wstring_view agent)
+    void TerminalPage::_ConnectSshHost(const OpenSsh::SavedHost& host, const std::wstring_view agent, const bool sftp)
     {
         hstring error;
         try
@@ -1178,7 +1406,8 @@ namespace winrt::TerminalApp::implementation
             else
             {
                 std::error_code identityError;
-                if (!current->usesOpenSshConfig && !current->identityFile.empty() && !std::filesystem::is_regular_file(std::filesystem::path{ current->identityFile }, identityError))
+                if (!current->usesOpenSshConfig && current->authentication == OpenSsh::HostAuthentication::IdentityFile &&
+                    !std::filesystem::is_regular_file(std::filesystem::path{ current->identityFile }, identityError))
                 {
                     error = RS_(L"SshHostsIdentityUnavailable");
                 }
@@ -1190,12 +1419,33 @@ namespace winrt::TerminalApp::implementation
                 if (error.empty())
                 {
                     auto title = current->name;
-                    if (!agent.empty())
+                    std::wstring command;
+                    if (sftp)
                     {
-                        title.append(L" - ").append(agent);
+                        const auto sshPath = wil::ExpandEnvironmentStringsW<std::wstring>(executable);
+                        auto sftpExecutable = std::filesystem::path{ sshPath };
+                        sftpExecutable.replace_filename(L"sftp.exe");
+                        std::error_code sftpError;
+                        if (std::filesystem::is_regular_file(sftpExecutable, sftpError))
+                        {
+                            command = OpenSsh::BuildSftpCommandline(sftpExecutable.native(), sshPath, *current);
+                            title.append(L" - SFTP");
+                        }
+                        else
+                        {
+                            error = RS_(L"SshHostsSftpMissing");
+                        }
+                    }
+                    else
+                    {
+                        command = OpenSsh::BuildCommandline(executable, *current, agent);
+                        if (!agent.empty())
+                        {
+                            title.append(L" - ").append(agent);
+                        }
                     }
                     const auto launch = _workspaceAgentLaunch(agent, current->id, current->name, true);
-                    if (!_OpenConnectionTab(OpenSsh::BuildCommandline(executable, *current, agent), title, agent.empty() ? nullptr : &launch))
+                    if (error.empty() && !_OpenConnectionTab(command, title, agent.empty() ? nullptr : &launch))
                     {
                         error = RS_(L"SshHostsLaunchFailed");
                     }
@@ -1226,9 +1476,11 @@ namespace winrt::TerminalApp::implementation
         const auto weak = get_weak();
         // Run the dialog after the invoking control finishes its input event.
         co_await wil::resume_foreground(Dispatcher(), Windows::UI::Core::CoreDispatcherPriority::Low);
-        const auto presenter = [&weak]() -> IDialogPresenter {
+        HWND owner{};
+        const auto presenter = [&]() -> IDialogPresenter {
             if (const auto page = weak.get())
             {
+                owner = page->_hostingHwnd.value_or(nullptr);
                 return page->_dialogPresenter.get();
             }
             return nullptr;
@@ -1242,7 +1494,8 @@ namespace winrt::TerminalApp::implementation
         try
         {
             using namespace winrt::Microsoft::Terminal::Settings::Model;
-            const auto editor = std::make_shared<SshHostsDialog>(std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() }, std::move(host));
+            const auto editor = std::make_shared<SshHostsDialog>(
+                std::filesystem::path{ CascadiaSettings::SettingsDirectory().c_str() }, std::move(host), owner);
             editor->Initialize();
             co_await presenter.ShowDialog(editor->Dialog);
             if (const auto page = weak.get())
