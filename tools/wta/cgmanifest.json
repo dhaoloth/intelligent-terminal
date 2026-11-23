@@ -185,6 +185,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "awaitable",
+          "version": "0.4.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "awaitable-error",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "base62",
           "version": "2.2.4"
         }
@@ -401,6 +419,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "concurrent_arena",
+          "version": "0.1.11"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "concurrent-queue",
           "version": "2.5.0"
         }
@@ -556,6 +583,15 @@
         "cargo": {
           "name": "deranged",
           "version": "0.5.8"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "derive_destructure2",
+          "version": "0.1.3"
         }
       }
     },
@@ -1481,6 +1517,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "num-derive",
+          "version": "0.5.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "num-traits",
           "version": "0.2.19"
         }
@@ -1501,6 +1546,51 @@
         "cargo": {
           "name": "once_cell_polyfill",
           "version": "1.70.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "openssh-sftp-client",
+          "version": "0.15.12"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "openssh-sftp-client-lowlevel",
+          "version": "0.7.4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "openssh-sftp-error",
+          "version": "0.5.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "openssh-sftp-protocol",
+          "version": "0.26.1"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "openssh-sftp-protocol-error",
+          "version": "0.1.1"
         }
       }
     },
@@ -2264,6 +2354,24 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "ssh_format",
+          "version": "0.14.2"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "ssh_format_error",
+          "version": "0.1.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "stable_deref_trait",
           "version": "1.2.1"
         }
@@ -2426,6 +2534,15 @@
       "component": {
         "type": "cargo",
         "cargo": {
+          "name": "thin-vec",
+          "version": "0.2.21"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
           "name": "thiserror",
           "version": "1.0.69"
         }
@@ -2527,6 +2644,15 @@
         "cargo": {
           "name": "tokio",
           "version": "1.50.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "tokio-io-utility",
+          "version": "0.7.6"
         }
       }
     },
@@ -2860,6 +2986,15 @@
         "cargo": {
           "name": "uuid",
           "version": "1.22.0"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "cargo",
+        "cargo": {
+          "name": "vec-strings",
+          "version": "0.4.8"
         }
       }
     },

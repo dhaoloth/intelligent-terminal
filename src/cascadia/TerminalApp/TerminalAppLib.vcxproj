@@ -254,6 +254,7 @@
     <ClCompile Include="SharedWta.cpp" />
     <ClCompile Include="SshHostStore.cpp" />
     <ClCompile Include="TerminalPage.SshHosts.cpp" />
+    <ClCompile Include="TerminalPage.Sftp.cpp" />
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>

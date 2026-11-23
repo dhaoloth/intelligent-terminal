@@ -708,6 +708,33 @@ namespace Microsoft::Terminal::OpenSsh
         return command;
     }
 
+    void AppendWtaSshTarget(std::wstring& arguments, const SavedHost& host)
+    {
+        THROW_HR_IF(E_INVALIDARG, ValidateHost(host) != InvalidHostField::None);
+        const auto append = [&](const std::wstring_view option, const std::wstring_view value) {
+            arguments.append(option);
+            til::append_quoted_argument(arguments, value);
+        };
+        append(L" --ssh-host ", host.address);
+        if (host.usesOpenSshConfig)
+        {
+            return;
+        }
+        arguments.append(L" --ssh-port ").append(std::to_wstring(host.port));
+        if (!host.username.empty())
+        {
+            append(L" --ssh-user ", host.username);
+        }
+        if (!host.jumpHostAlias.empty())
+        {
+            append(L" --ssh-jump-alias ", host.jumpHostAlias);
+        }
+        if (host.authentication == HostAuthentication::IdentityFile)
+        {
+            append(L" --ssh-identity-file ", host.identityFile);
+        }
+    }
+
     std::vector<std::wstring> LoadConfigAliases(const std::filesystem::path& configPath)
     {
         std::vector<std::wstring> aliases;

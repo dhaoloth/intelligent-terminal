@@ -537,6 +537,57 @@ pub(crate) enum Command {
         #[arg(long, requires = "ssh_host")]
         ssh_jump_alias: Option<String>,
     },
+    /// List one remote directory through the Windows OpenSSH SFTP subsystem.
+    SftpList {
+        /// OpenSSH config alias or destination host.
+        #[arg(long)]
+        ssh_host: String,
+        /// Override the SSH destination hostname while retaining alias config.
+        #[arg(long)]
+        ssh_hostname: Option<String>,
+        /// Override the SSH port.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+        ssh_port: Option<u16>,
+        /// Override the SSH username.
+        #[arg(long)]
+        ssh_user: Option<String>,
+        /// Explicit SSH identity file.
+        #[arg(long)]
+        ssh_identity_file: Option<String>,
+        /// Literal OpenSSH config alias for a jump host.
+        #[arg(long)]
+        ssh_jump_alias: Option<String>,
+        /// Remote directory path. Use `--path=<value>` for paths starting with `-`.
+        #[arg(long)]
+        path: String,
+    },
+    /// Download one remote file to a new local temporary file over SFTP.
+    SftpDownload {
+        /// OpenSSH config alias or destination host.
+        #[arg(long)]
+        ssh_host: String,
+        /// Override the SSH destination hostname while retaining alias config.
+        #[arg(long)]
+        ssh_hostname: Option<String>,
+        /// Override the SSH port.
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..))]
+        ssh_port: Option<u16>,
+        /// Override the SSH username.
+        #[arg(long)]
+        ssh_user: Option<String>,
+        /// Explicit SSH identity file.
+        #[arg(long)]
+        ssh_identity_file: Option<String>,
+        /// Literal OpenSSH config alias for a jump host.
+        #[arg(long)]
+        ssh_jump_alias: Option<String>,
+        /// Remote file path. Use `--path=<value>` for paths starting with `-`.
+        #[arg(long)]
+        path: String,
+        /// Local temporary file path; must not already exist.
+        #[arg(long)]
+        local_path: std::path::PathBuf,
+    },
     /// Run a built-in agent's native interactive CLI in the current console.
     LaunchAgent {
         #[arg(long)]

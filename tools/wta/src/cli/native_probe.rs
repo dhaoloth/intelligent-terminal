@@ -172,46 +172,15 @@ pub(crate) async fn run(
                     return Ok(());
                 }
             };
-            command.args([
-                "-T",
-                "-o",
-                "BatchMode=yes",
-                "-o",
-                "ForwardAgent=no",
-                "-o",
-                "ConnectTimeout=5",
-                "-o",
-                "ConnectionAttempts=1",
-                "-o",
-                "ClearAllForwardings=yes",
-                "-o",
-                "PermitLocalCommand=no",
-            ]);
-            if let Some(alias) = jump_alias {
-                command.args(["-J", alias]);
-            }
-            if let Some(port) = ssh_port {
-                command.args(["-p".to_owned(), port.to_string()]);
-            }
-            if let Some(user) = ssh_user {
-                command.args([
-                    "-l".to_owned(),
-                    validate_value("--ssh-user", user)?.to_owned(),
-                ]);
-            }
-            if let Some(identity) = ssh_identity_file {
-                let identity = validate_value("--ssh-identity-file", identity)?;
-                command.args([
-                    "-o",
-                    "PreferredAuthentications=publickey",
-                    "-o",
-                    "IdentitiesOnly=yes",
-                ]);
-                command.args(["-i".to_owned(), identity.to_owned()]);
-            }
-            if destination != host {
-                command.args(["-o".to_owned(), format!("HostName={destination}")]);
-            }
+            configure_ssh_command(
+                &mut command,
+                host,
+                destination,
+                ssh_port,
+                ssh_user,
+                ssh_identity_file,
+                jump_alias,
+            )?;
             let remote_command = format!("sh -lc {}", posix_quote(REMOTE_SCRIPT));
             command.arg("--").arg(host).arg(remote_command);
             (target, command)
@@ -316,7 +285,7 @@ pub(crate) async fn run(
     Ok(())
 }
 
-fn validate_value<'a>(flag: &str, value: &'a str) -> Result<&'a str> {
+pub(super) fn validate_value<'a>(flag: &str, value: &'a str) -> Result<&'a str> {
     anyhow::ensure!(
         !value.is_empty() && !value.starts_with('-') && !value.chars().any(char::is_control),
         "invalid value for {flag}"
@@ -324,7 +293,7 @@ fn validate_value<'a>(flag: &str, value: &'a str) -> Result<&'a str> {
     Ok(value)
 }
 
-fn validate_jump_alias<'a>(alias: &'a str, host: &str) -> Result<&'a str> {
+pub(super) fn validate_jump_alias<'a>(alias: &'a str, host: &str) -> Result<&'a str> {
     anyhow::ensure!(
         !alias.is_empty()
             && alias.len() <= 120
@@ -337,6 +306,58 @@ fn validate_jump_alias<'a>(alias: &'a str, host: &str) -> Result<&'a str> {
         "invalid value for --ssh-jump-alias"
     );
     Ok(alias)
+}
+
+pub(super) fn configure_ssh_command(
+    command: &mut Command,
+    host: &str,
+    destination: &str,
+    port: Option<u16>,
+    user: Option<&str>,
+    identity_file: Option<&str>,
+    jump_alias: Option<&str>,
+) -> Result<()> {
+    command.args([
+        "-T",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ForwardAgent=no",
+        "-o",
+        "ConnectTimeout=5",
+        "-o",
+        "ConnectionAttempts=1",
+        "-o",
+        "ClearAllForwardings=yes",
+        "-o",
+        "PermitLocalCommand=no",
+    ]);
+    if let Some(alias) = jump_alias {
+        command.args(["-J", alias]);
+    }
+    if let Some(port) = port {
+        command.args(["-p".to_owned(), port.to_string()]);
+    }
+    if let Some(user) = user {
+        command.args([
+            "-l".to_owned(),
+            validate_value("--ssh-user", user)?.to_owned(),
+        ]);
+    }
+    if let Some(identity) = identity_file {
+        let identity = validate_value("--ssh-identity-file", identity)?;
+        command.args([
+            "-o",
+            "PreferredAuthentications=publickey",
+            "-o",
+            "IdentitiesOnly=yes",
+        ]);
+        command.args(["-i".to_owned(), identity.to_owned()]);
+    }
+    if destination != host {
+        command.args(["-o".to_owned(), format!("HostName={destination}")]);
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -353,7 +374,7 @@ fn trusted_wsl_path() -> Option<std::path::PathBuf> {
 }
 
 #[cfg(windows)]
-fn trusted_ssh_path() -> Option<PathBuf> {
+pub(super) fn trusted_ssh_path() -> Option<PathBuf> {
     open_ssh_candidates(
         std::env::var_os("SystemRoot").map(PathBuf::from),
         std::env::var_os("ProgramFiles").map(PathBuf::from),
@@ -364,7 +385,7 @@ fn trusted_ssh_path() -> Option<PathBuf> {
 }
 
 #[cfg(not(windows))]
-fn trusted_ssh_path() -> Option<std::path::PathBuf> {
+pub(super) fn trusted_ssh_path() -> Option<std::path::PathBuf> {
     None
 }
 

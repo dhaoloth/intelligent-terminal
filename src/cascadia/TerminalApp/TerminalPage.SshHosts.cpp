@@ -103,27 +103,7 @@ namespace
         std::wstring args{ L"probe-native-agents" };
         if (const auto& host = target.host)
         {
-            args.append(L" --ssh-host");
-            _appendArgument(args, host->address);
-            if (!host->usesOpenSshConfig)
-            {
-                args.append(L" --ssh-port ").append(std::to_wstring(host->port));
-                if (!host->username.empty())
-                {
-                    args.append(L" --ssh-user");
-                    _appendArgument(args, host->username);
-                }
-                if (!host->jumpHostAlias.empty())
-                {
-                    args.append(L" --ssh-jump-alias");
-                    _appendArgument(args, host->jumpHostAlias);
-                }
-                if (host->authentication == OpenSsh::HostAuthentication::IdentityFile)
-                {
-                    args.append(L" --ssh-identity-file");
-                    _appendArgument(args, host->identityFile);
-                }
-            }
+            OpenSsh::AppendWtaSshTarget(args, *host);
         }
         else
         {
@@ -691,7 +671,7 @@ namespace winrt::TerminalApp::implementation
 
         const auto panel = WorkspaceAgentSessionsRows().Children();
         std::optional<uint64_t> focusedContent;
-        FocusState priorFocus{ FocusState::Unfocused };
+        winrt::Windows::UI::Xaml::FocusState priorFocus{ FocusState::Unfocused };
         for (const auto& child : panel)
         {
             if (const auto button = child.try_as<Button>(); button && button.FocusState() != FocusState::Unfocused)
@@ -727,7 +707,7 @@ namespace winrt::TerminalApp::implementation
             StackPanel details;
             details.Spacing(3);
             TextBlock name;
-            name.Text(RS_fmt(L"WorkspaceAgentSessionName", session.launch.providerDisplayName, session.launch.targetDisplayName));
+            name.Text(RS_fmt(L"WorkspaceAgentSessionName", std::wstring_view{ session.launch.providerDisplayName }, std::wstring_view{ session.launch.targetDisplayName }));
             name.TextWrapping(TextWrapping::Wrap);
             name.FontWeight(winrt::Windows::UI::Text::FontWeights::SemiBold());
             details.Children().Append(name);
@@ -793,8 +773,13 @@ namespace winrt::TerminalApp::implementation
 
         try
         {
-            const auto owner = session->kept ? as<winrt::TerminalApp::TerminalPage>() : session->owner.get();
-            if (owner && (co_await winrt::get_self<TerminalPage>(owner)->FocusProtocolPane(paneId)))
+            const auto owner = session->owner.get();
+            auto* page = this;
+            if (!session->kept)
+            {
+                page = owner ? winrt::get_self<TerminalPage>(owner) : nullptr;
+            }
+            if (page && (co_await page->FocusProtocolPane(paneId)))
             {
                 co_return;
             }
@@ -1023,15 +1008,29 @@ namespace winrt::TerminalApp::implementation
             return found == rows->end() ? std::nullopt : std::optional{ *found };
         };
         Button openSftp;
-        openSftp.Content(box_value(RS_(L"SshHostsOpenSftp")));
+        openSftp.Content(box_value(L"SFTP"));
         openSftp.IsEnabled(false);
         openSftp.HorizontalAlignment(HorizontalAlignment::Stretch);
-        openSftp.Click([weak = get_weak(), selectedHost](auto&&, auto&&) {
+        MenuFlyout sftpActions;
+        MenuFlyoutItem browseSftp;
+        browseSftp.Text(RS_(L"SftpBrowseFiles"));
+        browseSftp.Click([weak = get_weak(), selectedHost](auto&&, auto&&) {
+            if (const auto page = weak.get(); page && *selectedHost)
+            {
+                page->_ShowSftpBrowser(**selectedHost);
+            }
+        });
+        sftpActions.Items().Append(browseSftp);
+        MenuFlyoutItem sftpTerminal;
+        sftpTerminal.Text(RS_(L"SshHostsOpenSftp"));
+        sftpTerminal.Click([weak = get_weak(), selectedHost](auto&&, auto&&) {
             if (const auto page = weak.get(); page && *selectedHost)
             {
                 page->_ConnectSshHost(**selectedHost, {}, true);
             }
         });
+        sftpActions.Items().Append(sftpTerminal);
+        openSftp.Flyout(sftpActions);
         tree.RegisterPropertyChangedCallback(TreeControls::TreeView::SelectedItemProperty(), [weakTree, lookup, probeTarget, cancelOtherProbe, selectedHost, weakSftp = winrt::make_weak(openSftp)](auto&&, auto&&) {
             selectedHost->reset();
             if (const auto currentTree = weakTree.get())
@@ -1422,7 +1421,7 @@ namespace winrt::TerminalApp::implementation
                     std::wstring command;
                     if (sftp)
                     {
-                        const auto sshPath = wil::ExpandEnvironmentStringsW<std::wstring>(executable);
+                        const auto sshPath = wil::ExpandEnvironmentStringsW<std::wstring>(executable.data());
                         auto sftpExecutable = std::filesystem::path{ sshPath };
                         sftpExecutable.replace_filename(L"sftp.exe");
                         std::error_code sftpError;

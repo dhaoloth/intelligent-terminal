@@ -944,6 +944,7 @@ namespace winrt::TerminalApp::implementation
         void _ConnectWslDistribution(std::wstring_view distribution, std::wstring_view agent = {});
         bool _OpenConnectionTab(std::wstring_view commandline, std::wstring_view title, const WorkspaceAgentLaunch* workspaceAgent = nullptr);
         safe_void_coroutine _ShowSshHosts(std::optional<::Microsoft::Terminal::OpenSsh::SavedHost> host = std::nullopt);
+        safe_void_coroutine _ShowSftpBrowser(::Microsoft::Terminal::OpenSsh::SavedHost host);
         std::vector<winrt::Windows::UI::Xaml::Controls::MenuFlyoutItemBase> _CreateNewTabFlyoutItems(winrt::Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::NewTabMenuEntry> entries);
         winrt::Windows::UI::Xaml::Controls::IconElement _CreateNewTabFlyoutIcon(const winrt::hstring& icon);
         winrt::Windows::UI::Xaml::Controls::MenuFlyoutItem _CreateNewTabFlyoutProfile(const Microsoft::Terminal::Settings::Model::Profile profile, int profileIndex, const winrt::hstring& iconPathOverride);

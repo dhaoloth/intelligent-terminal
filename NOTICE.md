@@ -576,6 +576,8 @@ if it were canonical for the whole group.
 - **async-trait** v0.1.89 -- [https://github.com/dtolnay/async-trait](https://github.com/dtolnay/async-trait) -- `Apache-2.0 OR MIT`
 - **atomic** v0.6.1 -- [https://github.com/Amanieu/atomic-rs](https://github.com/Amanieu/atomic-rs) -- `Apache-2.0 OR MIT`
 - **atomic-waker** v1.1.2 -- [https://github.com/smol-rs/atomic-waker](https://github.com/smol-rs/atomic-waker) -- `Apache-2.0 OR MIT`
+- **awaitable** v0.4.1 -- [https://github.com/NobodyXu/awaitable](https://github.com/NobodyXu/awaitable) -- `MIT`
+- **awaitable-error** v0.1.0 -- [https://github.com/NobodyXu/awaitable](https://github.com/NobodyXu/awaitable) -- `MIT`
 - **base62** v2.2.4 -- [https://github.com/fbernier/base62](https://github.com/fbernier/base62) -- `MIT`
 - **base64** v0.22.1 -- [https://github.com/marshallpierce/rust-base64](https://github.com/marshallpierce/rust-base64) -- `Apache-2.0 OR MIT`
 - **base64** v0.23.1 -- [https://github.com/marshallpierce/rust-base64](https://github.com/marshallpierce/rust-base64) -- `Apache-2.0 OR MIT`
@@ -600,6 +602,7 @@ if it were canonical for the whole group.
 - **clap_lex** v1.0.0 -- [https://github.com/clap-rs/clap](https://github.com/clap-rs/clap) -- `Apache-2.0 OR MIT`
 - **colorchoice** v1.0.4 -- [https://github.com/rust-cli/anstyle.git](https://github.com/rust-cli/anstyle.git) -- `Apache-2.0 OR MIT`
 - **compact_str** v0.9.0 -- [https://github.com/ParkMyCar/compact_str](https://github.com/ParkMyCar/compact_str) -- `MIT`
+- **concurrent_arena** v0.1.11 -- [https://github.com/NobodyXu/concurrent_arena](https://github.com/NobodyXu/concurrent_arena) -- `MIT`
 - **concurrent-queue** v2.5.0 -- [https://github.com/smol-rs/concurrent-queue](https://github.com/smol-rs/concurrent-queue) -- `Apache-2.0 OR MIT`
 - **convert_case** v0.10.0 -- [https://github.com/rutrum/convert-case](https://github.com/rutrum/convert-case) -- `MIT`
 - **cpufeatures** v0.2.17 -- [https://github.com/RustCrypto/utils](https://github.com/RustCrypto/utils) -- `Apache-2.0 OR MIT`
@@ -618,6 +621,7 @@ if it were canonical for the whole group.
 - **darling_macro** v0.23.0 -- [https://github.com/TedDriggs/darling](https://github.com/TedDriggs/darling) -- `MIT`
 - **deltae** v0.3.2 -- [https://gitlab.com/ryanobeirne/deltae.git](https://gitlab.com/ryanobeirne/deltae.git) -- `MIT`
 - **deranged** v0.5.8 -- [https://github.com/jhpratt/deranged](https://github.com/jhpratt/deranged) -- `Apache-2.0 OR MIT`
+- **derive_destructure2** v0.1.3 -- [https://github.com/NobodyXu/derive_destructure2](https://github.com/NobodyXu/derive_destructure2) -- `Apache-2.0 OR MIT`
 - **derive_more** v2.1.1 -- [https://github.com/JelteF/derive_more](https://github.com/JelteF/derive_more) -- `MIT`
 - **derive_more-impl** v2.1.1 -- [https://github.com/JelteF/derive_more](https://github.com/JelteF/derive_more) -- `MIT`
 - **digest** v0.10.7 -- [https://github.com/RustCrypto/traits](https://github.com/RustCrypto/traits) -- `Apache-2.0 OR MIT`
@@ -720,9 +724,15 @@ if it were canonical for the whole group.
 - **nu-ansi-term** v0.50.3 -- [https://github.com/nushell/nu-ansi-term](https://github.com/nushell/nu-ansi-term) -- `MIT`
 - **num-conv** v0.2.0 -- [https://github.com/jhpratt/num-conv](https://github.com/jhpratt/num-conv) -- `Apache-2.0 OR MIT`
 - **num-derive** v0.4.2 -- [https://github.com/rust-num/num-derive](https://github.com/rust-num/num-derive) -- `Apache-2.0 OR MIT`
+- **num-derive** v0.5.1 -- [https://github.com/rust-num/num-derive](https://github.com/rust-num/num-derive) -- `Apache-2.0 OR MIT`
 - **num-traits** v0.2.19 -- [https://github.com/rust-num/num-traits](https://github.com/rust-num/num-traits) -- `Apache-2.0 OR MIT`
 - **once_cell** v1.21.3 -- [https://github.com/matklad/once_cell](https://github.com/matklad/once_cell) -- `Apache-2.0 OR MIT`
 - **once_cell_polyfill** v1.70.2 -- [https://github.com/polyfill-rs/once_cell_polyfill](https://github.com/polyfill-rs/once_cell_polyfill) -- `Apache-2.0 OR MIT`
+- **openssh-sftp-client** v0.15.12 -- [https://github.com/openssh-rust/openssh-sftp-client](https://github.com/openssh-rust/openssh-sftp-client) -- `MIT`
+- **openssh-sftp-client-lowlevel** v0.7.4 -- [https://github.com/openssh-rust/openssh-sftp-client](https://github.com/openssh-rust/openssh-sftp-client) -- `MIT`
+- **openssh-sftp-error** v0.5.1 -- [https://github.com/openssh-rust/openssh-sftp-client](https://github.com/openssh-rust/openssh-sftp-client) -- `MIT`
+- **openssh-sftp-protocol** v0.26.1 -- [https://github.com/openssh-rust/openssh-sftp-client](https://github.com/openssh-rust/openssh-sftp-client) -- `MIT`
+- **openssh-sftp-protocol-error** v0.1.1 -- [https://github.com/openssh-rust/openssh-sftp-client](https://github.com/openssh-rust/openssh-sftp-client) -- `MIT`
 - **ordered-float** v4.6.0 -- [https://github.com/reem/rust-ordered-float](https://github.com/reem/rust-ordered-float) -- `MIT`
 - **parking** v2.2.1 -- [https://github.com/smol-rs/parking](https://github.com/smol-rs/parking) -- `Apache-2.0 OR MIT`
 - **parking_lot** v0.12.5 -- [https://github.com/Amanieu/parking_lot](https://github.com/Amanieu/parking_lot) -- `Apache-2.0 OR MIT`
@@ -807,6 +817,8 @@ if it were canonical for the whole group.
 - **smallvec** v1.15.1 -- [https://github.com/servo/rust-smallvec](https://github.com/servo/rust-smallvec) -- `Apache-2.0 OR MIT`
 - **smawk** v0.3.2 -- [https://github.com/mgeisler/smawk](https://github.com/mgeisler/smawk) -- `MIT`
 - **socket2** v0.6.3 -- [https://github.com/rust-lang/socket2](https://github.com/rust-lang/socket2) -- `Apache-2.0 OR MIT`
+- **ssh_format** v0.14.2 -- [https://github.com/openssh-rust/ssh_format](https://github.com/openssh-rust/ssh_format) -- `MIT`
+- **ssh_format_error** v0.1.0 -- [https://github.com/openssh-rust/ssh_format](https://github.com/openssh-rust/ssh_format) -- `MIT`
 - **stable_deref_trait** v1.2.1 -- [https://github.com/storyyeller/stable_deref_trait](https://github.com/storyyeller/stable_deref_trait) -- `Apache-2.0 OR MIT`
 - **static_assertions** v1.1.0 -- [https://github.com/nvzqz/static-assertions-rs](https://github.com/nvzqz/static-assertions-rs) -- `Apache-2.0 OR MIT`
 - **strsim** v0.11.1 -- [https://github.com/rapidfuzz/strsim-rs](https://github.com/rapidfuzz/strsim-rs) -- `MIT`
@@ -825,6 +837,7 @@ if it were canonical for the whole group.
 - **terminfo** v0.9.0 -- [https://github.com/meh/rust-terminfo](https://github.com/meh/rust-terminfo) -- `WTFPL`
 - **termwiz** v0.23.3 -- [https://github.com/wezterm/wezterm](https://github.com/wezterm/wezterm) -- `MIT`
 - **textwrap** v0.16.2 -- [https://github.com/mgeisler/textwrap](https://github.com/mgeisler/textwrap) -- `MIT`
+- **thin-vec** v0.2.21 -- [https://github.com/mozilla/thin-vec](https://github.com/mozilla/thin-vec) -- `Apache-2.0 OR MIT`
 - **thiserror** v1.0.69 -- [https://github.com/dtolnay/thiserror](https://github.com/dtolnay/thiserror) -- `Apache-2.0 OR MIT`
 - **thiserror** v2.0.18 -- [https://github.com/dtolnay/thiserror](https://github.com/dtolnay/thiserror) -- `Apache-2.0 OR MIT`
 - **thiserror-impl** v1.0.69 -- [https://github.com/dtolnay/thiserror](https://github.com/dtolnay/thiserror) -- `Apache-2.0 OR MIT`
@@ -837,6 +850,7 @@ if it were canonical for the whole group.
 - **tinyvec** v1.11.0 -- [https://github.com/Lokathor/tinyvec](https://github.com/Lokathor/tinyvec) -- `Apache-2.0 OR MIT OR Zlib`
 - **tinyvec_macros** v0.1.1 -- [https://github.com/Soveu/tinyvec_macros](https://github.com/Soveu/tinyvec_macros) -- `Apache-2.0 OR MIT OR Zlib`
 - **tokio** v1.50.0 -- [https://github.com/tokio-rs/tokio](https://github.com/tokio-rs/tokio) -- `MIT`
+- **tokio-io-utility** v0.7.6 -- [https://github.com/openssh-rust/tokio-io-utility.git](https://github.com/openssh-rust/tokio-io-utility.git) -- `MIT`
 - **tokio-macros** v2.6.1 -- [https://github.com/tokio-rs/tokio](https://github.com/tokio-rs/tokio) -- `MIT`
 - **tokio-rustls** v0.26.6 -- [https://github.com/rustls/tokio-rustls](https://github.com/rustls/tokio-rustls) -- `Apache-2.0 OR MIT`
 - **tokio-util** v0.7.18 -- [https://github.com/tokio-rs/tokio](https://github.com/tokio-rs/tokio) -- `MIT`
@@ -874,6 +888,7 @@ if it were canonical for the whole group.
 - **utf8_iter** v1.0.4 -- [https://github.com/hsivonen/utf8_iter](https://github.com/hsivonen/utf8_iter) -- `Apache-2.0 OR MIT`
 - **utf8parse** v0.2.2 -- [https://github.com/alacritty/vte](https://github.com/alacritty/vte) -- `Apache-2.0 OR MIT`
 - **uuid** v1.22.0 -- [https://github.com/uuid-rs/uuid](https://github.com/uuid-rs/uuid) -- `Apache-2.0 OR MIT`
+- **vec-strings** v0.4.8 -- [https://github.com/NobodyXu/vec-strings](https://github.com/NobodyXu/vec-strings) -- `MIT`
 - **vtparse** v0.6.2 -- [https://github.com/wez/wezterm](https://github.com/wez/wezterm) -- `MIT`
 - **walkdir** v2.5.0 -- [https://github.com/BurntSushi/walkdir](https://github.com/BurntSushi/walkdir) -- `MIT OR Unlicense`
 - **want** v0.3.2 -- [https://github.com/seanmonstar/want](https://github.com/seanmonstar/want) -- `MIT`
@@ -931,7 +946,7 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ### `Apache-2.0`
 
-Applies to 229 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+221 more)
+Applies to 232 crate(s) (directly or via composite identifiers): adler2 v2.0.1, agent-client-protocol v1.3.0, agent-client-protocol-derive v1.3.0, agent-client-protocol-schema v1.4.0, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, ... (+224 more)
 
 _Canonical text reproduced from upstream `SPDX:Apache-2.0`:_
 
@@ -1340,7 +1355,7 @@ _Canonical text reproduced from upstream `SPDX:LLVM-exception`:_
 
 ### `MIT`
 
-Applies to 318 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+310 more)
+Applies to 333 crate(s) (directly or via composite identifiers): adler2 v2.0.1, aho-corasick v1.1.4, allocator-api2 v0.2.21, anstream v0.6.21, anstyle v1.0.13, anstyle-parse v0.2.7, anstyle-query v1.1.5, anstyle-wincon v3.0.11, ... (+325 more)
 
 _Canonical text reproduced from upstream `SPDX:MIT`:_
 
@@ -1477,6 +1492,7 @@ Copyright (c) 2020 Yoshua Wuyts
 Copyright (c) 2020-2025 The RustCrypto Project Developers
 Copyright (c) 2020-2026 The RustCrypto Project Developers
 Copyright (c) 2021 1Password
+Copyright (c) 2021 Jiahao XU
 Copyright (c) 2021 Longbridge
 Copyright (c) 2021 Parker Timmerman
 Copyright (c) 2021 RustCrypto Developers

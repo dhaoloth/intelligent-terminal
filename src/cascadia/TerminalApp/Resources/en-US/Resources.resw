@@ -2050,6 +2050,60 @@ For all available options, run 'wt new-tab --help'.</value>
   <data name="SshHostsChanged" xml:space="preserve">
     <value>This SSH host changed in another window. The latest changes were kept.</value>
   </data>
+  <data name="SftpBrowseTitle" xml:space="preserve">
+    <value>Files on {0}</value>
+  </data>
+  <data name="SftpBrowseFiles" xml:space="preserve">
+    <value>Browse remote files</value>
+  </data>
+  <data name="SftpRemotePath" xml:space="preserve">
+    <value>Remote path</value>
+  </data>
+  <data name="SftpOpenDirectory" xml:space="preserve">
+    <value>Open path</value>
+  </data>
+  <data name="SftpParentDirectory" xml:space="preserve">
+    <value>Go up</value>
+  </data>
+  <data name="SftpReadingDirectory" xml:space="preserve">
+    <value>Reading directory…</value>
+  </data>
+  <data name="SftpBrowseFailed" xml:space="preserve">
+    <value>Could not open the remote directory.</value>
+  </data>
+  <data name="SftpBrowseAuthenticationRequired" xml:space="preserve">
+    <value>Open the SFTP terminal to complete interactive authentication.</value>
+  </data>
+  <data name="SftpPermissionDenied" xml:space="preserve">
+    <value>Access to the remote path was denied.</value>
+  </data>
+  <data name="SftpTimedOut" xml:space="preserve">
+    <value>The connection timed out.</value>
+  </data>
+  <data name="SftpDirectoryTruncated" xml:space="preserve">
+    <value>Only the first entries are shown. Enter a path to open a specific directory.</value>
+  </data>
+  <data name="SftpDownload" xml:space="preserve">
+    <value>Download</value>
+  </data>
+  <data name="SftpDownloading" xml:space="preserve">
+    <value>Downloading…</value>
+  </data>
+  <data name="SftpDownloadFailed" xml:space="preserve">
+    <value>Could not download the selected file.</value>
+  </data>
+  <data name="SftpDownloadFileExists" xml:space="preserve">
+    <value>The destination exists. Choose another file name.</value>
+  </data>
+  <data name="SftpDownloadComplete" xml:space="preserve">
+    <value>Download saved.</value>
+  </data>
+  <data name="SftpDirectoryEmpty" xml:space="preserve">
+    <value>This directory is empty.</value>
+  </data>
+  <data name="SftpEntrySize" xml:space="preserve">
+    <value>{0} ({1} bytes)</value>
+  </data>
   <data name="SshHostsOpenSftp" xml:space="preserve">
     <value>Open SFTP terminal</value>
     <comment>{Locked="SFTP"}</comment>

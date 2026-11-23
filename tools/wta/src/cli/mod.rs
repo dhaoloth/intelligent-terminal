@@ -4,6 +4,7 @@ pub(crate) mod delegate;
 pub(crate) mod hooks;
 pub(crate) mod native_agent;
 pub(crate) mod native_probe;
+pub(crate) mod native_sftp;
 pub(crate) mod probes;
 pub(crate) mod sessions;
 pub(crate) mod wt;
@@ -218,6 +219,48 @@ pub(crate) async fn run(command: Command, json_mode: bool) -> Result<()> {
                 ssh_user.as_deref(),
                 ssh_identity_file.as_deref(),
                 ssh_jump_alias.as_deref(),
+            )
+            .await
+        }
+        Command::SftpList {
+            ssh_host,
+            ssh_hostname,
+            ssh_port,
+            ssh_user,
+            ssh_identity_file,
+            ssh_jump_alias,
+            path,
+        } => {
+            native_sftp::run(
+                &ssh_host,
+                ssh_hostname.as_deref(),
+                ssh_port,
+                ssh_user.as_deref(),
+                ssh_identity_file.as_deref(),
+                ssh_jump_alias.as_deref(),
+                &path,
+            )
+            .await
+        }
+        Command::SftpDownload {
+            ssh_host,
+            ssh_hostname,
+            ssh_port,
+            ssh_user,
+            ssh_identity_file,
+            ssh_jump_alias,
+            path,
+            local_path,
+        } => {
+            native_sftp::download(
+                &ssh_host,
+                ssh_hostname.as_deref(),
+                ssh_port,
+                ssh_user.as_deref(),
+                ssh_identity_file.as_deref(),
+                ssh_jump_alias.as_deref(),
+                &path,
+                &local_path,
             )
             .await
         }

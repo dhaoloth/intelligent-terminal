@@ -35,6 +35,7 @@
     <ClCompile Include="TerminalSettingsCache.cpp" />
     <ClCompile Include="SshHostStore.cpp" />
     <ClCompile Include="TerminalPage.SshHosts.cpp" />
+    <ClCompile Include="TerminalPage.Sftp.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />

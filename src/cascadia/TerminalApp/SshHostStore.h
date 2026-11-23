@@ -72,6 +72,7 @@ namespace Microsoft::Terminal::OpenSsh
     uint32_t ParsePort(std::wstring_view value) noexcept;
     std::wstring BuildCommandline(std::wstring_view executable, const SavedHost& host, std::wstring_view nativeAgent = {});
     std::wstring BuildSftpCommandline(std::wstring_view sftpExecutable, std::wstring_view sshExecutable, const SavedHost& host);
+    void AppendWtaSshTarget(std::wstring& arguments, const SavedHost& host);
     std::vector<std::wstring> LoadConfigAliases();
     std::vector<std::wstring> LoadConfigAliases(const std::filesystem::path& configPath);
 
